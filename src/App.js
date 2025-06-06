@@ -4,7 +4,7 @@ import { useFirebaseData } from './hooks/useFirebaseData';
 import { useRoundRobin } from './hooks/useRoundRobin';
 import { useToast, ToastProvider } from './hooks/useToast';
 import Dashboard from './components/Dashboard';
-import { db } from "./firebase";
+import { db, firebaseConfig } from "./firebase";
 import {
   collection,
   getDocs,
@@ -19,6 +19,16 @@ import {
 } from "firebase/firestore";
 import { FaWhatsapp } from "react-icons/fa";
 import "./App.css";
+import {
+  saveBookingToFirestore,
+  updateBookingInFirestore,
+  deleteBookingFromFirestore,
+  updateCarInFirestore,
+  deleteCarFromFirestore,
+  updateSalespersonInFirestore,
+  deleteSalespersonFromFirestore,
+  updateSettingsInFirestore
+} from './utils/firebaseUtils';
 
 const Toast = ({ message, type, onClose }) => {
   const [isVisible, setIsVisible] = useState(true);
@@ -110,17 +120,43 @@ const App = () => {
         salespersonId: salesperson.id,
         salespersonName: salesperson.name,
         timestamp: Date.now(),
+        status: 'active'
       };
 
       // Update car status
-      const carRef = doc(db, "cars", carId);
-      await updateDoc(carRef, {
+      const carRef = doc(db, "cars", carId.toString());
+      const updatedCar = {
+        ...car,
         available: false,
         queue: car.queue.slice(1)
+      };
+      await updateDoc(carRef, {
+        available: false,
+        queue: updatedCar.queue
       });
 
       // Add booking to active bookings
-      await addDoc(collection(db, "bookings"), newBooking);
+      const bookingRef = await addDoc(collection(db, "bookings"), newBooking);
+      
+      // Update local state
+      setCars(prev => prev.map(c => 
+        c.id === carId ? updatedCar : c
+      ));
+      setActiveBookings(prev => [...prev, { id: bookingRef.id, ...newBooking }]);
+
+      // Update round robin order
+      const newRoundRobinOrder = [...roundRobinOrder];
+      const currentIndex = newRoundRobinOrder.indexOf(salesperson.id);
+      if (currentIndex !== -1) {
+        newRoundRobinOrder.splice(currentIndex, 1);
+        newRoundRobinOrder.push(salesperson.id);
+        setRoundRobinOrder(newRoundRobinOrder);
+        
+        // Update round robin order in Firestore
+        await updateDoc(doc(db, "settings", "config"), {
+          roundRobinOrder: newRoundRobinOrder
+        });
+      }
       
       addToast('Queue processed successfully', 'success');
     } catch (error) {
@@ -131,11 +167,20 @@ const App = () => {
 
   const handleMarkCarUnavailable = async (carId) => {
     try {
-      const carRef = doc(db, "cars", carId);
+      // Convert ID to string for Firestore
+      const idString = String(carId);
+      
+      // Update Firestore
+      const carRef = doc(db, "cars", idString);
       await updateDoc(carRef, { available: false });
+      
+      // Update local state
       setCars(prev => prev.map(c => 
-        c.id === carId ? { ...c, available: false } : c
+        String(c.id) === idString
+          ? { ...c, available: false }
+          : c
       ));
+      
       addToast("Car marked as unavailable", "success");
     } catch (error) {
       console.error("Error marking car unavailable:", error);
@@ -158,9 +203,17 @@ const App = () => {
   const handleAddSalesperson = async (e) => {
     e.preventDefault();
     try {
+      const name = adminForm.newSalesperson.trim();
+      const mobileNumber = adminForm.newSalespersonMobile.trim();
+
+      if (!name) {
+        addToast("Please enter a salesperson name", "error");
+        return;
+      }
+
       const newSalesperson = {
-        name: adminForm.newSalesperson,
-        mobileNumber: adminForm.newSalespersonMobile,
+        name,
+        mobileNumber: mobileNumber || null,
         timestamp: Date.now()
       };
 
@@ -178,9 +231,17 @@ const App = () => {
   const handleAddCar = async (e) => {
     e.preventDefault();
     try {
+      const model = adminForm.newCarModel.trim();
+      const numberPlate = adminForm.newCarNumberPlate.trim();
+
+      if (!model) {
+        addToast("Please enter a car model", "error");
+        return;
+      }
+
       const newCar = {
-        model: adminForm.newCarModel,
-        numberPlate: adminForm.newCarNumberPlate,
+        model,
+        numberPlate: numberPlate || null,
         available: true,
         queue: [],
         timestamp: Date.now()
@@ -207,10 +268,19 @@ const App = () => {
 
   const handleDeleteCar = async (carId) => {
     try {
-      const carRef = doc(db, "cars", carId);
-      await deleteDoc(carRef);
-      setCars(prev => prev.filter(c => c.id !== carId));
-      setCarOrder(prev => prev.filter(id => id !== carId));
+      // Convert ID to string for Firestore
+      const idString = String(carId);
+      
+      // Delete from Firestore
+      await deleteDoc(doc(db, "cars", idString));
+      
+      // Update local state
+      setCars(prev => prev.filter(c => c.id !== idString));
+      setCarOrder(prev => prev.filter(id => id !== idString));
+      
+      // Update active bookings to remove references to deleted car
+      setActiveBookings(prev => prev.filter(b => String(b.carId) !== idString));
+      
       addToast("Car deleted successfully", "success");
     } catch (error) {
       console.error("Error deleting car:", error);
@@ -228,10 +298,28 @@ const App = () => {
 
   const handleDeleteSalesperson = async (salespersonId) => {
     try {
-      const salespersonRef = doc(db, "salespeople", salespersonId);
-      await deleteDoc(salespersonRef);
-      setSalespeople(prev => prev.filter(sp => sp.id !== salespersonId));
-      setSalespeopleOrder(prev => prev.filter(id => id !== salespersonId));
+      // Convert ID to string for Firestore
+      const idString = String(salespersonId);
+      
+      // Delete from Firestore
+      await deleteDoc(doc(db, "salespeople", idString));
+      
+      // Update local state
+      setSalespeople(prev => prev.filter(sp => sp.id !== idString));
+      setSalespeopleOrder(prev => prev.filter(id => id !== idString));
+      
+      // Remove from round robin if present and update Firestore
+      const newRoundRobinOrder = roundRobinOrder.filter(id => id !== idString);
+      setRoundRobinOrder(newRoundRobinOrder);
+      
+      // Update round robin order in Firestore
+      await updateDoc(doc(db, "settings", "config"), {
+        roundRobinOrder: newRoundRobinOrder
+      });
+      
+      // Update active bookings to remove references to deleted salesperson
+      setActiveBookings(prev => prev.filter(b => String(b.salespersonId) !== idString));
+      
       addToast("Salesperson deleted successfully", "success");
     } catch (error) {
       console.error("Error deleting salesperson:", error);
@@ -246,63 +334,164 @@ const App = () => {
 
   const handleSaveNumberPlate = async () => {
     try {
-      const carRef = doc(db, "cars", editCar.id);
-      await updateDoc(carRef, { numberPlate: editCar.newNumberPlate });
+      if (!editCar) return;
+
+      // Ensure we have valid string values
+      const model = String(editCar.model || "").trim();
+      const numberPlate = String(editCar.newNumberPlate || "").trim();
+
+      if (!model) {
+        addToast("Please enter a car model", "error");
+        return;
+      }
+
+      const carRef = doc(db, "cars", String(editCar.id));
+      await updateDoc(carRef, { 
+        model,
+        numberPlate: numberPlate || null 
+      });
+
+      // Update local state
       setCars(prev => prev.map(c => 
-        c.id === editCar.id ? { ...c, numberPlate: editCar.newNumberPlate } : c
+        String(c.id) === String(editCar.id)
+          ? { ...c, model, numberPlate: numberPlate || null }
+          : c
       ));
+
+      // Update active bookings
+      const affectedBookings = activeBookings.filter(
+        b => String(b.carId) === String(editCar.id)
+      );
+
+      // Update bookings in batches to handle errors gracefully
+      const batch = writeBatch(db);
+      for (const booking of affectedBookings) {
+        try {
+          const bookingRef = doc(db, "bookings", String(booking.id));
+          batch.update(bookingRef, { 
+            carModel: model,
+            carNumberPlate: numberPlate || null
+          });
+        } catch (error) {
+          console.warn(`Could not update booking ${booking.id}:`, error);
+        }
+      }
+
+      try {
+        await batch.commit();
+      } catch (error) {
+        console.warn("Some booking updates failed:", error);
+      }
+
+      // Update local booking states
+      setActiveBookings(prev => prev.map(b => 
+        String(b.carId) === String(editCar.id)
+          ? { ...b, carModel: model, carNumberPlate: numberPlate || null }
+          : b
+      ));
+
       setEditCar(null);
-      addToast("Number plate updated successfully", "success");
+      addToast("Car updated successfully", "success");
     } catch (error) {
-      console.error("Error updating number plate:", error);
-      addToast("Failed to update number plate", "error");
+      console.error("Error updating car:", error);
+      addToast("Failed to update car", "error");
+    }
+  };
+
+  const normalizeMobileNumber = (number) => {
+    try {
+      if (!number) return null;
+      const numStr = String(number).trim();
+      if (!numStr) return null;
+      
+      // Remove all non-numeric characters except +
+      const cleaned = numStr.replace(/[^0-9+]/g, "");
+      if (!cleaned) return null;
+
+      // If it starts with +, return as is, otherwise add +65
+      return cleaned.startsWith("+") ? cleaned : `+65${cleaned}`;
+    } catch (error) {
+      console.error("Error normalizing mobile number:", error);
+      return null;
     }
   };
 
   const handleSaveSalesperson = async () => {
     try {
       if (!editSalesperson) return;
-      const newName = editSalesperson.newName.trim();
-      const newMobileNumber = normalizeMobileNumber(
-        editSalesperson.newMobileNumber
-      );
+      
+      // Handle name
+      const newName = String(editSalesperson.newName || "").trim();
       if (!newName) {
         addToast("Please enter a salesperson name", "error");
         return;
       }
-      const updatedSalesperson = {
-        ...editSalesperson,
+
+      // Handle mobile number
+      let newMobileNumber = null;
+      if (editSalesperson.newMobileNumber) {
+        const numStr = String(editSalesperson.newMobileNumber).trim();
+        if (numStr) {
+          // Remove all non-numeric characters except +
+          const cleaned = numStr.replace(/[^0-9+]/g, "");
+          if (cleaned) {
+            newMobileNumber = cleaned.startsWith("+") ? cleaned : `+65${cleaned}`;
+          }
+        }
+      }
+
+      const salespersonId = String(editSalesperson.id);
+
+      // Update Firestore
+      await updateDoc(doc(db, "salespeople", salespersonId), {
         name: newName,
         mobileNumber: newMobileNumber,
-      };
-      setSalespeople((prev) =>
-        prev.map((sp) =>
-          sp.id === editSalesperson.id ? updatedSalesperson : sp
-        )
-      );
-      await updateSalespersonInFirestore(updatedSalesperson);
+      });
+
+      // Update local state
+      setSalespeople(prev => prev.map(sp => 
+        String(sp.id) === salespersonId 
+          ? { ...sp, name: newName, mobileNumber: newMobileNumber }
+          : sp
+      ));
+
+      // Update affected bookings
       const affectedBookings = [...activeBookings, ...completedBookings].filter(
-        (b) => b.salespersonId === editSalesperson.id
+        b => String(b.salespersonId) === salespersonId
       );
+
+      // Update bookings in batches to handle errors gracefully
+      const batch = writeBatch(db);
       for (const booking of affectedBookings) {
-        await updateBookingInFirestore(booking.id, {
-          salespersonName: newName,
-        });
+        try {
+          const bookingRef = doc(db, "bookings", booking.id);
+          batch.update(bookingRef, { salespersonName: newName });
+        } catch (error) {
+          console.warn(`Could not update booking ${booking.id}:`, error);
+          // Continue with other updates even if one fails
+        }
       }
-      setActiveBookings((prev) =>
-        prev.map((b) =>
-          b.salespersonId === editSalesperson.id
-            ? { ...b, salespersonName: newName }
-            : b
-        )
-      );
-      setCompletedBookings((prev) =>
-        prev.map((b) =>
-          b.salespersonId === editSalesperson.id
-            ? { ...b, salespersonName: newName }
-            : b
-        )
-      );
+
+      try {
+        await batch.commit();
+      } catch (error) {
+        console.warn("Some booking updates failed:", error);
+        // Continue with the rest of the function even if batch commit fails
+      }
+
+      // Update local booking states
+      setActiveBookings(prev => prev.map(b => 
+        String(b.salespersonId) === salespersonId
+          ? { ...b, salespersonName: newName }
+          : b
+      ));
+
+      setCompletedBookings(prev => prev.map(b => 
+        String(b.salespersonId) === salespersonId
+          ? { ...b, salespersonName: newName }
+          : b
+      ));
+
       setEditSalesperson(null);
       addToast(`Salesperson ${newName} updated`, "success");
     } catch (error) {
@@ -377,130 +566,103 @@ const App = () => {
     </div>
   );
 
-  const normalizeMobileNumber = (number) => {
-    if (!number) return null;
-    const cleaned = number.replace(/[^0-9+]/g, "");
-    return cleaned.startsWith("+") ? cleaned : `+65${cleaned}`;
-  };
-
-  const updateSalespersonInFirestore = async (salesperson) => {
-    try {
-      await setDoc(doc(db, "salespeople", salesperson.id.toString()), {
-        ...salesperson,
-        mobileNumber: salesperson.mobileNumber || null,
-      });
-    } catch (error) {
-      console.error("Error updating salesperson:", error);
-      addToast("Failed to update salesperson on server", "error");
-    }
-  };
-
-  const updateBookingInFirestore = async (bookingId, data) => {
-    try {
-      await updateDoc(doc(db, "bookings", bookingId), data);
-    } catch (error) {
-      console.error("Error updating booking:", error);
-      addToast("Failed to update booking on server", "error");
-    }
-  };
-
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch cars
         const carsSnapshot = await getDocs(collection(db, "cars"));
         let cars = carsSnapshot.docs.map((doc) => ({
-          id: parseInt(doc.id),
+          id: doc.id,
           ...doc.data(),
         }));
         if (cars.length === 0) {
           const defaultCars = [
             {
-              id: 1,
+              id: "1",
               model: "IS300h",
               numberPlate: "SNU6980E",
               available: true,
               queue: [],
             },
             {
-              id: 2,
+              id: "2",
               model: "ES300h Exec",
               numberPlate: "SKR0188S",
               available: true,
               queue: [],
             },
             {
-              id: 3,
+              id: "3",
               model: "ES300h Lux",
               numberPlate: "SJY6880L",
               available: true,
               queue: [],
             },
             {
-              id: 4,
+              id: "4",
               model: "LBX Elegant",
               numberPlate: "SGR2298S",
               available: true,
               queue: [],
             },
             {
-              id: 5,
+              id: "5",
               model: "LBX Cool",
               numberPlate: "Tradeplate",
               available: true,
               queue: [],
             },
             {
-              id: 6,
+              id: "6",
               model: "NX350h Goshi",
               numberPlate: "Tradeplate",
               available: true,
               queue: [],
             },
             {
-              id: 7,
+              id: "7",
               model: "NX450h+",
               numberPlate: "SNU8251M",
               available: true,
               queue: [],
             },
             {
-              id: 8,
+              id: "8",
               model: "RX350h",
               numberPlate: "SKB7888T",
               available: true,
               queue: [],
             },
             {
-              id: 9,
+              id: "9",
               model: "RX450h+",
               numberPlate: "Tradeplate",
               available: true,
               queue: [],
             },
             {
-              id: 10,
+              id: "10",
               model: "RZ450e",
               numberPlate: "Tradeplate",
               available: true,
               queue: [],
             },
             {
-              id: 11,
+              id: "11",
               model: "UX300h",
               numberPlate: "Tradeplate",
               available: true,
               queue: [],
             },
             {
-              id: 12,
+              id: "12",
               model: "LM350h",
               numberPlate: null,
               available: true,
               queue: [],
             },
             {
-              id: 13,
+              id: "13",
               model: "LM500h",
               numberPlate: null,
               available: true,
@@ -508,7 +670,7 @@ const App = () => {
             },
           ];
           for (const car of defaultCars) {
-            await setDoc(doc(db, "cars", car.id.toString()), car);
+            await setDoc(doc(db, "cars", car.id), car);
           }
           cars = defaultCars;
         }
@@ -517,17 +679,17 @@ const App = () => {
         // Fetch salespeople
         const salespeopleSnapshot = await getDocs(collection(db, "salespeople"));
         let salespeople = salespeopleSnapshot.docs.map((doc) => ({
-          id: parseInt(doc.id),
+          id: doc.id,
           ...doc.data(),
         }));
         if (salespeople.length === 0) {
           const defaultSalespeople = [
-            { id: 1, name: "Daryl Han", mobileNumber: "+6591234567" },
-            { id: 2, name: "Cai YuTong", mobileNumber: "+6592345678" },
-            { id: 3, name: "Sherley Teo", mobileNumber: "+6593456789" },
+            { id: "1", name: "Daryl Han", mobileNumber: "+6591234567" },
+            { id: "2", name: "Cai YuTong", mobileNumber: "+6592345678" },
+            { id: "3", name: "Sherley Teo", mobileNumber: "+6593456789" },
           ];
           for (const sp of defaultSalespeople) {
-            await setDoc(doc(db, "salespeople", sp.id.toString()), sp);
+            await setDoc(doc(db, "salespeople", sp.id), sp);
           }
           salespeople = defaultSalespeople;
         }
@@ -596,21 +758,6 @@ const App = () => {
                 handleProcessQueue={handleProcessQueue}
                 handleMarkCarUnavailable={handleMarkCarUnavailable}
                 handleAddToRoundRobin={handleAddToRoundRobin}
-                handleAddSalesperson={handleAddSalesperson}
-                handleAddCar={handleAddCar}
-                handleEditCar={handleEditCar}
-                handleDeleteCar={handleDeleteCar}
-                handleEditSalesperson={handleEditSalesperson}
-                handleDeleteSalesperson={handleDeleteSalesperson}
-                adminForm={adminForm}
-                setAdminForm={setAdminForm}
-                handleAdminChange={handleAdminChange}
-                editCar={editCar}
-                setEditCar={setEditCar}
-                editSalesperson={editSalesperson}
-                setEditSalesperson={setEditSalesperson}
-                handleSaveNumberPlate={handleSaveNumberPlate}
-                handleSaveSalesperson={handleSaveSalesperson}
                 setCars={setCars}
                 setActiveBookings={setActiveBookings}
               />
@@ -773,6 +920,117 @@ const App = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Edit Car Modal */}
+                {editCar && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-semibold">Edit Car</h3>
+                        <button
+                          onClick={() => setEditCar(null)}
+                          className="text-gray-400 hover:text-white"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-1">
+                            Model
+                          </label>
+                          <input
+                            type="text"
+                            value={editCar.model}
+                            onChange={(e) => setEditCar({ ...editCar, model: e.target.value })}
+                            className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-1">
+                            Number Plate
+                          </label>
+                          <input
+                            type="text"
+                            value={editCar.newNumberPlate}
+                            onChange={(e) => setEditCar({ ...editCar, newNumberPlate: e.target.value })}
+                            className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
+                          />
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => setEditCar(null)}
+                            className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-500"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveNumberPlate}
+                            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Edit Salesperson Modal */}
+                {editSalesperson && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-semibold">Edit Salesperson</h3>
+                        <button
+                          onClick={() => setEditSalesperson(null)}
+                          className="text-gray-400 hover:text-white"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-1">
+                            Name
+                          </label>
+                          <input
+                            type="text"
+                            value={editSalesperson.newName}
+                            onChange={(e) => setEditSalesperson({ ...editSalesperson, newName: e.target.value })}
+                            className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-400 mb-1">
+                            Mobile Number
+                          </label>
+                          <input
+                            type="text"
+                            value={editSalesperson.newMobileNumber}
+                            onChange={(e) => setEditSalesperson({ ...editSalesperson, newMobileNumber: e.target.value })}
+                            className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
+                            placeholder="+6591234567"
+                          />
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                          <button
+                            onClick={() => setEditSalesperson(null)}
+                            className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-500"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSaveSalesperson}
+                            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

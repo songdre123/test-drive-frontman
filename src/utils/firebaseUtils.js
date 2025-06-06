@@ -6,6 +6,7 @@ import {
   deleteDoc,
   collection,
   getDocs,
+  addDoc,
 } from 'firebase/firestore';
 
 export async function saveTeamToFirestore(teamData) {
@@ -18,43 +19,102 @@ export async function updateTeamInFirestore(teamId, teamData) {
 }
 
 export async function updateSettingsInFirestore(settings) {
-  const settingsRef = doc(db, 'settings', 'orders');
-  // Sanitize settings to prevent undefined values
-  const sanitizedSettings = {};
-  for (const key in settings) {
-    if (settings[key] !== undefined) {
-      sanitizedSettings[key] = settings[key];
-    } else if (key === 'selectedTeamId') {
-      // Explicitly set selectedTeamId to null if it's undefined
-      // or handle as per your application's logic (e.g., remove the key)
-      sanitizedSettings[key] = null; 
+  try {
+    const settingsRef = doc(db, 'settings', 'config');
+    // Sanitize settings to prevent undefined values
+    const sanitizedSettings = {};
+    for (const key in settings) {
+      if (settings[key] !== undefined) {
+        sanitizedSettings[key] = settings[key];
+      } else if (key === 'selectedTeamId') {
+        sanitizedSettings[key] = null;
+      }
     }
-    // Add other specific key handlings if needed
+    await setDoc(settingsRef, sanitizedSettings, { merge: true });
+  } catch (error) {
+    console.error("Error updating settings:", error);
+    throw error;
   }
-  // Use setDoc with merge: true to create the document if it doesn't exist,
-  // or update it if it does.
-  await setDoc(settingsRef, sanitizedSettings, { merge: true });
 }
 
-export async function updateCarInFirestore(carData) {
-  await updateDoc(doc(db, 'cars', carData.id.toString()), {
-    model: carData.model,
-    numberPlate: carData.numberPlate,
-    available: carData.available,
-    queue: carData.queue || [],
-  });
+export async function updateCarInFirestore(car) {
+  try {
+    await setDoc(doc(db, "cars", car.id.toString()), {
+      model: car.model,
+      numberPlate: car.numberPlate,
+      available: car.available,
+      queue: car.queue || [],
+    });
+  } catch (error) {
+    console.error("Error updating car:", error);
+    throw error;
+  }
 }
 
-export async function updateSalespersonInFirestore(spData) {
-  await updateDoc(doc(db, 'salespeople', spData.id.toString()), {
-    name: spData.name,
-    mobileNumber: spData.mobileNumber,
-    isOnDuty: spData.isOnDuty,
-  });
+export async function updateSalespersonInFirestore(salesperson) {
+  try {
+    await setDoc(doc(db, "salespeople", salesperson.id.toString()), {
+      ...salesperson,
+      mobileNumber: salesperson.mobileNumber || null,
+    });
+  } catch (error) {
+    console.error("Error updating salesperson:", error);
+    throw error;
+  }
 }
 
 export async function clearBookings() {
   const bookings = await getDocs(collection(db, 'bookings'));
   const deletions = bookings.docs.map((doc) => deleteDoc(doc.ref));
   await Promise.all(deletions);
+}
+
+export async function saveBookingToFirestore(booking) {
+  try {
+    const docRef = await addDoc(collection(db, "bookings"), {
+      ...booking,
+      status: "active",
+      timestamp: new Date(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error("Error saving booking:", error);
+    throw error;
+  }
+}
+
+export async function updateBookingInFirestore(bookingId, bookingData) {
+  try {
+    await updateDoc(doc(db, "bookings", bookingId), bookingData);
+  } catch (error) {
+    console.error("Error updating booking:", error);
+    throw error;
+  }
+}
+
+export async function deleteBookingFromFirestore(bookingId) {
+  try {
+    await deleteDoc(doc(db, "bookings", bookingId));
+  } catch (error) {
+    console.error("Error deleting booking:", error);
+    throw error;
+  }
+}
+
+export async function deleteCarFromFirestore(carId) {
+  try {
+    await deleteDoc(doc(db, "cars", carId.toString()));
+  } catch (error) {
+    console.error("Error deleting car:", error);
+    throw error;
+  }
+}
+
+export async function deleteSalespersonFromFirestore(salespersonId) {
+  try {
+    await deleteDoc(doc(db, "salespeople", salespersonId.toString()));
+  } catch (error) {
+    console.error("Error deleting salesperson:", error);
+    throw error;
+  }
 }

@@ -16,31 +16,14 @@ function Dashboard({
   activeBookings, 
   roundRobinOrder, 
   setRoundRobinOrder, 
-  handleRemoveFromRoundRobin: propHandleRemoveFromRoundRobin, 
-  handleProcessQueue: propHandleProcessQueue, 
-  handleMarkCarUnavailable: propHandleMarkCarUnavailable, 
-  handleAddToRoundRobin: propHandleAddToRoundRobin, 
-  handleAddSalesperson, 
-  handleAddCar, 
-  handleEditCar, 
-  handleDeleteCar, 
-  handleEditSalesperson, 
-  handleDeleteSalesperson, 
-  adminForm, 
-  setAdminForm, 
-  handleAdminChange, 
-  editCar, 
-  setEditCar, 
-  editSalesperson, 
-  setEditSalesperson, 
-  handleSaveNumberPlate, 
-  handleSaveSalesperson,
+  handleRemoveFromRoundRobin, 
+  handleProcessQueue, 
+  handleMarkCarUnavailable, 
+  handleAddToRoundRobin, 
   setCars,
-  setActiveBookings 
+  setActiveBookings
 }) {
   const [showBookingForm, setShowBookingForm] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showSalesAndCars, setShowSalesAndCars] = useState(false);
   const [formData, setFormData] = useState({
     carId: '',
     salespersonId: '',
@@ -48,10 +31,6 @@ function Dashboard({
   const [selectedCar, setSelectedCar] = useState(null);
   const [showQueueModal, setShowQueueModal] = useState(false);
   const [isRoundRobinDropDisabled, setIsRoundRobinDropDisabled] = useState(false);
-  const [showEditCarModal, setShowEditCarModal] = useState(false);
-  const [showEditSalespersonModal, setShowEditSalespersonModal] = useState(false);
-  const [selectedCarForEdit, setSelectedCarForEdit] = useState(null);
-  const [selectedSalespersonForEdit, setSelectedSalespersonForEdit] = useState(null);
   const [selectedCarForQueue, setSelectedCarForQueue] = useState(null);
 
   const { teams, selectedTeamId, setSelectedTeamId } = useFirebaseData(setLoadError, setIsLoading);
@@ -122,247 +101,72 @@ function Dashboard({
     }
   };
 
-  const handleProcessQueue = async (carId) => {
+  const handleDragEnd = async (result) => {
+    if (!result.destination) return;
+
+    const { source, destination } = result;
+    const newOrder = Array.from(roundRobinOrder);
+    const [removed] = newOrder.splice(source.index, 1);
+    newOrder.splice(destination.index, 0, removed);
+
+    setRoundRobinOrder(newOrder);
+    
     try {
-      const car = cars.find(c => c.id === carId);
-      if (!car || !car.queue || car.queue.length === 0) {
-        addToast('No queue to process', 'error');
-        return;
-      }
-
-      const nextInQueue = car.queue[0];
-      const salesperson = salespeople.find(sp => sp.id === nextInQueue.salespersonId);
-      
-      if (!salesperson) {
-        addToast('Salesperson not found', 'error');
-        return;
-      }
-
-      // Create new booking
-      const newBooking = {
-        carId: car.id,
-        carModel: car.model,
-        carNumberPlate: car.numberPlate,
-        salespersonId: salesperson.id,
-        salespersonName: salesperson.name,
-        timestamp: Date.now(),
-        status: 'active'
-      };
-
-      // Add booking to Firestore
-      const bookingRef = await addDoc(collection(db, "bookings"), newBooking);
-
-      // Update car status and remove from queue
-      await updateDoc(doc(db, "cars", carId.toString()), {
-        available: false,
-        queue: car.queue.slice(1)
-      });
-
-      // Remove salesperson from round robin if they're in it
-      if (roundRobinOrder.includes(salesperson.id)) {
-        const newRoundRobinOrder = roundRobinOrder.filter(id => id !== salesperson.id);
-        setRoundRobinOrder(newRoundRobinOrder);
-        
-        // Update round robin order in Firestore
-        await updateDoc(doc(db, "settings", "config"), {
-          roundRobinOrder: newRoundRobinOrder
-        });
-      }
-
-      // Update local state
-      setActiveBookings(prev => [...prev, { id: bookingRef.id, ...newBooking }]);
-      setCars(prev => prev.map(c => 
-        c.id === carId ? { ...c, available: false, queue: c.queue.slice(1) } : c
-      ));
-      
-      addToast('Queue processed successfully', 'success');
-    } catch (error) {
-      console.error('Error processing queue:', error);
-      addToast('Failed to process queue', 'error');
-    }
-  };
-
-  const handleMarkCarUnavailable = async (carId) => {
-    try {
-      // Convert carId to number if it's a string
-      const numericCarId = typeof carId === 'string' ? parseInt(carId) : carId;
-      
-      const car = cars.find(c => c.id === numericCarId);
-      if (!car) {
-        throw new Error('Car not found');
-      }
-
-      // Update car status in Firestore
-      await updateDoc(doc(db, "cars", numericCarId.toString()), {
-        available: false
-      });
-
-      // Update local state
-      setCars(prev => prev.map(c => 
-        c.id === numericCarId ? { ...c, available: false } : c
-      ));
-
-      addToast('Car marked as unavailable', 'success');
-    } catch (error) {
-      console.error('Error marking car unavailable:', error);
-      addToast(error.message || 'Failed to mark car unavailable', 'error');
-    }
-  };
-
-  const handleAddToRoundRobin = async (salespersonId) => {
-    try {
-      if (!roundRobinOrder.includes(salespersonId)) {
-        const newOrder = [...roundRobinOrder, salespersonId];
-        setRoundRobinOrder(newOrder);
-        
-        // Update in Firestore
-        await updateDoc(doc(db, "settings", "config"), {
-          roundRobinOrder: newOrder
-        });
-        
-        addToast("Salesperson added to round robin", "success");
-      }
-    } catch (error) {
-      console.error("Error adding to round robin:", error);
-      addToast("Failed to add to round robin", "error");
-    }
-  };
-
-  const handleRemoveFromRoundRobin = async (salespersonId) => {
-    try {
-      const newOrder = roundRobinOrder.filter(id => id !== salespersonId);
-      setRoundRobinOrder(newOrder);
-      
-      // Update in Firestore
       await updateDoc(doc(db, "settings", "config"), {
         roundRobinOrder: newOrder
       });
-      
-      addToast("Salesperson removed from round robin", "success");
+      addToast('Round robin order updated', 'success');
     } catch (error) {
-      console.error("Error removing from round robin:", error);
-      addToast("Failed to remove from round robin", "error");
-    }
-  };
-
-  const handleDragEnd = async (result) => {
-    if (!result.destination) {
-      return;
-    }
-
-    const { source, destination } = result;
-
-    try {
-      const reordered = Array.from(roundRobinOrder);
-      const [moved] = reordered.splice(source.index, 1);
-      reordered.splice(destination.index, 0, moved);
-
-      setRoundRobinOrder(reordered);
-      
-      // Update in Firestore
-      await updateDoc(doc(db, "settings", "config"), {
-        roundRobinOrder: reordered
-      });
-      
-      addToast("Round-robin order updated", "success");
-    } catch (error) {
-      console.error("Drag-and-drop error:", error);
-      addToast("Failed to update order", "error");
+      console.error('Error updating round robin order:', error);
+      addToast('Failed to update round robin order', 'error');
     }
   };
 
   const handleMoveSalesperson = async (spId, direction) => {
+    const currentIndex = roundRobinOrder.indexOf(spId);
+    if (currentIndex === -1) return;
+
+    const newOrder = [...roundRobinOrder];
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+
+    if (newIndex < 0 || newIndex >= newOrder.length) return;
+
+    [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
+    setRoundRobinOrder(newOrder);
+
     try {
-      const index = roundRobinOrder.indexOf(spId);
-      if (index === -1) return;
-      
-      const newIndex = direction === "up" ? index - 1 : index + 1;
-      if (newIndex < 0 || newIndex >= roundRobinOrder.length) return;
-      
-      const reordered = Array.from(roundRobinOrder);
-      [reordered[index], reordered[newIndex]] = [reordered[newIndex], reordered[index]];
-      
-      setRoundRobinOrder(reordered);
-      
-      // Update in Firestore
       await updateDoc(doc(db, "settings", "config"), {
-        roundRobinOrder: reordered
+        roundRobinOrder: newOrder
       });
-      
-      addToast("Round-robin order updated", "success");
+      addToast('Round robin order updated', 'success');
     } catch (error) {
-      console.error("Error moving salesperson:", error);
-      addToast("Failed to update order", "error");
+      console.error('Error updating round robin order:', error);
+      addToast('Failed to update round robin order', 'error');
     }
   };
 
   const handleReturnCar = async (carId) => {
     try {
-      // Convert carId to number if it's a string
-      const numericCarId = typeof carId === 'string' ? parseInt(carId) : carId;
-      
-      const car = cars.find(c => c.id === numericCarId);
+      const car = cars.find(c => c.id === carId);
       if (!car) {
         throw new Error('Car not found');
       }
 
-      const booking = activeBookings.find(b => b.carId === numericCarId);
-      
-      // If there's a booking, update it and add salesperson back to round robin
-      if (booking) {
-        try {
-          // Update booking status in Firestore
-          const bookingRef = doc(db, "bookings", booking.id);
-          await updateDoc(bookingRef, {
-            status: 'completed',
-            completedAt: Date.now()
-          });
-
-          // Add salesperson back to round robin at the end
-          if (!roundRobinOrder.includes(booking.salespersonId)) {
-            const newRoundRobinOrder = [...roundRobinOrder, booking.salespersonId];
-            setRoundRobinOrder(newRoundRobinOrder);
-            
-            // Update round robin order in Firestore
-            await updateDoc(doc(db, "settings", "config"), {
-              roundRobinOrder: newRoundRobinOrder
-            });
-          }
-        } catch (error) {
-          console.warn('Could not update booking:', error);
-          // Continue with car update even if booking update fails
-        }
-      }
-
       // Update car status in Firestore
-      const carRef = doc(db, "cars", numericCarId.toString());
-      await updateDoc(carRef, {
+      await updateDoc(doc(db, "cars", carId.toString()), {
         available: true
       });
 
       // Update local state
-      if (booking) {
-        setActiveBookings(prev => prev.filter(b => b.id !== booking.id));
-      }
       setCars(prev => prev.map(c => 
-        c.id === numericCarId ? { ...c, available: true } : c
+        c.id === carId ? { ...c, available: true } : c
       ));
 
-      addToast('Car returned successfully', 'success');
+      addToast('Car marked as available', 'success');
     } catch (error) {
       console.error('Error returning car:', error);
-      addToast(error.message || 'Failed to return car', 'error');
+      addToast('Failed to mark car as available', 'error');
     }
-  };
-
-  const handleEditCarClick = (car) => {
-    setSelectedCarForEdit(car);
-    setShowEditCarModal(true);
-  };
-
-  const handleEditSalespersonClick = (salesperson) => {
-    setSelectedSalespersonForEdit(salesperson);
-    setShowEditSalespersonModal(true);
   };
 
   const handleShowQueue = (car) => {
@@ -370,14 +174,25 @@ function Dashboard({
     setShowQueueModal(true);
   };
 
+  const handleProcessQueueAndClose = async (carId) => {
+    try {
+      await handleProcessQueue(carId);
+      setShowQueueModal(false);
+    } catch (error) {
+      console.error('Error processing queue:', error);
+    }
+  };
+
   const handleRemoveFromQueue = async (carId, queueIndex) => {
     try {
       const car = cars.find(c => c.id === carId);
-      if (!car || !car.queue) return;
+      if (!car) {
+        throw new Error('Car not found');
+      }
 
       const newQueue = car.queue.filter((_, index) => index !== queueIndex);
       
-      // Update in Firestore
+      // Update car in Firestore
       await updateDoc(doc(db, "cars", carId.toString()), {
         queue: newQueue
       });
@@ -387,300 +202,299 @@ function Dashboard({
         c.id === carId ? { ...c, queue: newQueue } : c
       ));
 
-      addToast('Removed from queue successfully', 'success');
+      // Update selected car for queue modal
+      setSelectedCarForQueue(prev => prev ? { ...prev, queue: newQueue } : null);
+
+      addToast('Removed from queue', 'success');
     } catch (error) {
       console.error('Error removing from queue:', error);
       addToast('Failed to remove from queue', 'error');
     }
   };
 
-  const handleEditCarSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      // Update in Firestore
-      await updateDoc(doc(db, "cars", selectedCarForEdit.id.toString()), {
-        model: selectedCarForEdit.model,
-        numberPlate: selectedCarForEdit.numberPlate
-      });
-
-      // Update local state
-      setCars(prev => prev.map(c => 
-        c.id === selectedCarForEdit.id ? selectedCarForEdit : c
-      ));
-
-      addToast('Car updated successfully', 'success');
-      setShowEditCarModal(false);
-    } catch (error) {
-      console.error('Error updating car:', error);
-      addToast('Failed to update car', 'error');
-    }
-  };
-
-  const handleEditSalespersonSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      // Update in Firestore
-      await updateDoc(doc(db, "salespeople", selectedSalespersonForEdit.id.toString()), {
-        name: selectedSalespersonForEdit.name,
-        mobileNumber: selectedSalespersonForEdit.mobileNumber
-      });
-
-      // Update local state
-      setSalespeople(prev => prev.map(sp => 
-        sp.id === selectedSalespersonForEdit.id ? selectedSalespersonForEdit : sp
-      ));
-
-      addToast('Salesperson updated successfully', 'success');
-      setShowEditSalespersonModal(false);
-    } catch (error) {
-      console.error('Error updating salesperson:', error);
-      addToast('Failed to update salesperson', 'error');
-    }
-  };
-
-  const renderCarCard = (car, isAvailable = true) => (
-    <div key={car.id} className="bg-gray-700 p-4 rounded-md">
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-lg font-medium text-gray-100">{car.model}</h3>
-          <p className="text-sm text-gray-400">Plate: {car.numberPlate || 'N/A'}</p>
-          {car.queue && car.queue.length > 0 && (
-            <div className="mt-2">
-              <p className="text-sm text-gray-400">Queue: {car.queue.length}</p>
+  const renderCarCard = (car, isAvailable = true) => {
+    const activeBooking = activeBookings.find(b => b.carId === car.id);
+    return (
+      <div
+        key={`car-${car.id}`}
+        className={`p-4 rounded-lg ${
+          isAvailable ? 'bg-gray-700' : 'bg-gray-600'
+        }`}
+      >
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-lg font-semibold">{car.model}</h3>
+            <p className="text-sm text-gray-400">
+              {car.numberPlate || 'No plate'}
+            </p>
+            {!isAvailable && activeBooking && (
+              <div className="mt-2 text-sm">
+                <p className="text-gray-300">
+                  With: {activeBooking.salespersonName}
+                </p>
+                <p className="text-gray-400">
+                  Since: {new Date(activeBooking.timestamp).toLocaleTimeString()}
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex space-x-2">
+            {isAvailable ? (
+              <>
+                <button
+                  onClick={() => handleMarkCarUnavailable(car.id)}
+                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                >
+                  Mark Unavailable
+                </button>
+                <button
+                  onClick={() => handleShowQueue(car)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  Queue ({car.queue?.length || 0})
+                </button>
+              </>
+            ) : (
               <button
-                onClick={() => handleShowQueue(car)}
-                className="text-blue-400 hover:text-blue-300 text-sm"
+                onClick={() => handleReturnCar(car.id)}
+                className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
               >
-                View Queue
+                Return Car
               </button>
-            </div>
-          )}
-        </div>
-        <div className="space-x-2">
-          {isAvailable ? (
-            <>
-              <button
-                onClick={() => handleProcessQueue(car.id)}
-                className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-              >
-                Process Queue
-              </button>
-              <button
-                onClick={() => handleMarkCarUnavailable(car.id)}
-                className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-              >
-                Mark Unavailable
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => handleReturnCar(car.id)}
-              className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
-            >
-              Return Car
-            </button>
-          )}
-          <button
-            onClick={() => handleEditCarClick(car)}
-            className="bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-500"
-          >
-            Edit
-          </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
-    <div className="flex min-h-screen bg-gray-900">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Dashboard</h2>
+        <button
+          onClick={() => setShowBookingForm(true)}
+          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+        >
+          New Booking
+        </button>
+      </div>
 
-      <div className="flex-1 p-6">
+      <div className="bg-gray-800 p-4 rounded-lg mb-6">
+        <h3 className="text-lg font-semibold mb-2">Next in Round-Robin</h3>
+        {roundRobinOrder.length > 0 ? (
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-xl font-medium">
+                {salespeople.find(sp => sp.id === roundRobinOrder[0])?.name || 'No salespeople'}
+              </span>
+              <p className="text-sm text-gray-400">
+                {salespeople.find(sp => sp.id === roundRobinOrder[0])?.mobileNumber || ''}
+              </p>
+            </div>
+            <div className="flex space-x-2">
+              {salespeople.find(sp => sp.id === roundRobinOrder[0])?.mobileNumber && (
+                <a
+                  href={`https://wa.me/65${salespeople.find(sp => sp.id === roundRobinOrder[0])?.mobileNumber.replace(/[^0-9]/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  WhatsApp
+                </a>
+              )}
+              <button
+                onClick={() => {
+                  const newOrder = [...roundRobinOrder];
+                  const first = newOrder.shift();
+                  newOrder.push(first);
+                  setRoundRobinOrder(newOrder);
+                }}
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+              >
+                Move to End
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-gray-400">No salespeople in round robin</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h3 className="text-xl font-semibold mb-4">Available Cars</h3>
+          <div className="space-y-4">
+            {cars
+              .filter(car => car.available)
+              .map(car => renderCarCard(car, true))}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-xl font-semibold mb-4">Unavailable Cars</h3>
+          <div className="space-y-4">
+            {cars
+              .filter(car => !car.available)
+              .map(car => renderCarCard(car, false))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-xl font-semibold mb-4">Round Robin Order</h3>
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="space-y-6">
-            <header className="flex justify-between items-center">
-              <h1 className="text-3xl font-bold text-gray-100">
-               Event Test Drive Frontman
-              </h1>
-              <div className="space-x-2">
-                <button
-                  onClick={() => setShowBookingForm(true)}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors"
-                  aria-label="Book test drive"
-                >
-                  Book Test Drive
-                </button>
-                <button
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition-colors"
-                >
-                  {showSettings ? 'Hide Settings' : 'Settings'}
-                </button>
-              </div>
-            </header>
-
-            {/* Main Grid Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Available Cars Section */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h2 className="text-xl font-semibold mb-4 text-gray-100">Available Cars</h2>
-                <div className="space-y-4">
-                  {cars
-                    .filter(car => car.available)
-                    .map(car => renderCarCard(car, true))}
-                </div>
-              </div>
-
-              {/* Unavailable Cars Section */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h2 className="text-xl font-semibold mb-4 text-gray-100">Unavailable Cars</h2>
-                <div className="space-y-4">
-                  {cars
-                    .filter(car => !car.available)
-                    .map(car => renderCarCard(car, false))}
-                </div>
-              </div>
-
-              {/* Available Salespeople Section */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h2 className="text-xl font-semibold mb-4 text-gray-100">Available Salespeople</h2>
-                <div className="grid grid-cols-1 gap-4">
-                  {salespeople
-                    .filter(sp => !roundRobinOrder.includes(sp.id))
-                    .map(sp => (
-                      <div key={sp.id} className="bg-gray-700 p-4 rounded-md">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <h3 className="text-lg font-medium text-gray-100">{sp.name}</h3>
-                            {sp.mobileNumber && (
-                              <p className="text-sm text-gray-400">{sp.mobileNumber}</p>
-                            )}
+          <Droppable droppableId="roundRobin">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="space-y-2"
+              >
+                {roundRobinOrder.map((spId, index) => {
+                  const salesperson = salespeople.find(sp => sp.id === spId);
+                  if (!salesperson) return null;
+                  return (
+                    <Draggable
+                      key={spId}
+                      draggableId={spId.toString()}
+                      index={index}
+                      isDragDisabled={isRoundRobinDropDisabled}
+                    >
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className="flex items-center p-3 bg-gray-700 rounded-md"
+                        >
+                          <div className="flex-grow">
+                            <span className="font-medium">{salesperson.name}</span>
                           </div>
-                          <div className="space-x-2">
+                          <div className="flex space-x-2">
                             <button
-                              onClick={() => handleEditSalespersonClick(sp)}
-                              className="bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-500"
+                              onClick={() => handleMoveSalesperson(spId, 'up')}
+                              disabled={index === 0}
+                              className="bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 disabled:opacity-50"
                             >
-                              Edit
+                              ↑
                             </button>
                             <button
-                              onClick={() => handleAddToRoundRobin(sp.id)}
-                              className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                              onClick={() => handleMoveSalesperson(spId, 'down')}
+                              disabled={index === roundRobinOrder.length - 1}
+                              className="bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 disabled:opacity-50"
                             >
-                              Add to Round Robin
+                              ↓
+                            </button>
+                            <button
+                              onClick={() => handleRemoveFromRoundRobin(spId)}
+                              className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
+                            >
+                              Remove
                             </button>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                </div>
+                      )}
+                    </Draggable>
+                  );
+                })}
+                {provided.placeholder}
               </div>
-
-              {/* Unavailable Salespeople Section */}
-              <div className="bg-gray-800 rounded-lg p-6">
-                <h2 className="text-xl font-semibold mb-4 text-gray-100">Round Robin Salespeople</h2>
-                <Droppable droppableId="roundRobin" isDropDisabled={isRoundRobinDropDisabled}>
-                  {(provided) => (
-                    <div
-                      {...provided.droppableProps}
-                      ref={provided.innerRef}
-                      className="space-y-2"
-                    >
-                      {roundRobinOrder.map((spId, index) => {
-                        const salesperson = salespeople.find(sp => sp.id === spId);
-                        if (!salesperson) return null;
-                        return (
-                          <Draggable
-                            key={spId}
-                            draggableId={spId.toString()}
-                            index={index}
-                          >
-                            {(provided) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                className="bg-gray-700 p-4 rounded-md flex items-center justify-between"
-                              >
-                                <div className="flex items-center space-x-4">
-                                  <span className="text-gray-400">{index + 1}.</span>
-                                  <div>
-                                    <h3 className="text-lg font-medium text-gray-100">{salesperson.name}</h3>
-                                    {salesperson.mobileNumber && (
-                                      <p className="text-sm text-gray-400">{salesperson.mobileNumber}</p>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex space-x-2">
-                                  <button
-                                    onClick={() => handleMoveSalesperson(spId, "up")}
-                                    disabled={index === 0}
-                                    className="bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 disabled:opacity-50"
-                                  >
-                                    ↑
-                                  </button>
-                                  <button
-                                    onClick={() => handleMoveSalesperson(spId, "down")}
-                                    disabled={index === roundRobinOrder.length - 1}
-                                    className="bg-gray-600 text-white px-2 py-1 rounded hover:bg-gray-500 disabled:opacity-50"
-                                  >
-                                    ↓
-                                  </button>
-                                  <button
-                                    onClick={() => handleRemoveFromRoundRobin(spId)}
-                                    className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        );
-                      })}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              </div>
-            </div>
-          </div>
+            )}
+          </Droppable>
         </DragDropContext>
+      </div>
 
-        {/* Booking Form Modal */}
-        {showBookingForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
-              <BookingForm
-                cars={cars}
-                salespeople={salespeople}
-                formData={formData}
-                handleChange={handleChange}
-                handleSubmit={handleSubmit}
-                onBack={() => setShowBookingForm(false)}
-                getNextSalesperson={getNextSalesperson}
-              />
+      <div>
+        <h3 className="text-xl font-semibold mb-4">Available Salespeople</h3>
+        <div className="space-y-2">
+          {salespeople
+            .filter(sp => !roundRobinOrder.includes(sp.id))
+            .map(sp => (
+              <div
+                key={sp.id}
+                className="flex items-center justify-between p-3 bg-gray-700 rounded-md"
+              >
+                <div className="flex-grow">
+                  <span className="font-medium">{sp.name}</span>
+                  {sp.mobileNumber && (
+                    <span className="text-sm text-gray-400 ml-2">
+                      ({sp.mobileNumber})
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleAddToRoundRobin(sp.id)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  Add to Round Robin
+                </button>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {showBookingForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">Book a Test Drive</h3>
+              <button
+                onClick={() => setShowBookingForm(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
             </div>
+            <BookingForm
+              cars={cars}
+              salespeople={salespeople}
+              formData={formData}
+              handleChange={handleChange}
+              handleSubmit={handleSubmit}
+              onClose={() => setShowBookingForm(false)}
+            />
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Queue Modal */}
-        {showQueueModal && selectedCarForQueue && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
-              <h2 className="text-xl font-semibold mb-4 text-gray-100">
+      {showQueueModal && selectedCarForQueue && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-gray-800 p-6 rounded-lg max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold">
                 Queue for {selectedCarForQueue.model}
-              </h2>
-              <div className="space-y-2">
-                {selectedCarForQueue.queue.map((item, index) => {
-                  const salesperson = salespeople.find(sp => sp.id === item.salespersonId);
-                  return (
-                    <div key={index} className="bg-gray-700 p-3 rounded-md flex justify-between items-center">
-                      <div>
-                        <p className="text-gray-100">{salesperson?.name || 'Unknown'}</p>
-                        <p className="text-sm text-gray-400">
-                          Added: {new Date(item.timestamp).toLocaleTimeString()}
-                        </p>
-                      </div>
+              </h3>
+              <button
+                onClick={() => setShowQueueModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2">
+              {selectedCarForQueue.queue?.length > 0 ? (
+                selectedCarForQueue.queue.map((item, index) => (
+                  <div
+                    key={`${selectedCarForQueue.id}-${item.salespersonId}-${item.timestamp}`}
+                    className="flex items-center justify-between p-3 bg-gray-700 rounded-md"
+                  >
+                    <div>
+                      <span className="font-medium">{item.salespersonName}</span>
+                      <p className="text-sm text-gray-400">
+                        Added: {new Date(item.timestamp).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleProcessQueueAndClose(selectedCarForQueue.id)}
+                        className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                      >
+                        Process
+                      </button>
                       <button
                         onClick={() => handleRemoveFromQueue(selectedCarForQueue.id, index)}
                         className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
@@ -688,113 +502,15 @@ function Dashboard({
                         Remove
                       </button>
                     </div>
-                  );
-                })}
-              </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => setShowQueueModal(false)}
-                  className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-500"
-                >
-                  Close
-                </button>
-              </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-400 text-center py-4">No one in queue</p>
+              )}
             </div>
           </div>
-        )}
-
-        {/* Edit Car Modal */}
-        {showEditCarModal && selectedCarForEdit && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
-              <h2 className="text-xl font-semibold mb-4 text-gray-100">Edit Car</h2>
-              <form onSubmit={handleEditCarSubmit}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300">Model</label>
-                    <input
-                      type="text"
-                      value={selectedCarForEdit.model}
-                      onChange={(e) => setSelectedCarForEdit(prev => ({ ...prev, model: e.target.value }))}
-                      className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300">Number Plate</label>
-                    <input
-                      type="text"
-                      value={selectedCarForEdit.numberPlate || ''}
-                      onChange={(e) => setSelectedCarForEdit(prev => ({ ...prev, numberPlate: e.target.value }))}
-                      className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                </div>
-                <div className="mt-6 flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowEditCarModal(false)}
-                    className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Salesperson Modal */}
-        {showEditSalespersonModal && selectedSalespersonForEdit && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-gray-800 rounded-lg p-6 max-w-lg w-full">
-              <h2 className="text-xl font-semibold mb-4 text-gray-100">Edit Salesperson</h2>
-              <form onSubmit={handleEditSalespersonSubmit}>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300">Name</label>
-                    <input
-                      type="text"
-                      value={selectedSalespersonForEdit.name}
-                      onChange={(e) => setSelectedSalespersonForEdit(prev => ({ ...prev, name: e.target.value }))}
-                      className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300">Mobile Number</label>
-                    <input
-                      type="text"
-                      value={selectedSalespersonForEdit.mobileNumber || ''}
-                      onChange={(e) => setSelectedSalespersonForEdit(prev => ({ ...prev, mobileNumber: e.target.value }))}
-                      className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white"
-                    />
-                  </div>
-                </div>
-                <div className="mt-6 flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowEditSalespersonModal(false)}
-                    className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

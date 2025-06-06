@@ -16,14 +16,25 @@ import { getAuth } from 'firebase/auth';
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyBZE_NDoeFJjwZJTPD9IGKgzKbfexUrV3g",
-  authDomain: "eventfrontman.firebaseapp.com",
-  projectId: "eventfrontman",
-  storageBucket: "eventfrontman.appspot.com",
-  messagingSenderId: "619977805915",
-  appId: "1:619977805915:web:25f6e9863f048d640bef7e",
-  measurementId: "G-CFDKBD0RTR"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
+
+// Debug log to check environment variables
+console.log('Firebase Config Values:', {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY ? 'Set' : 'Not Set',
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN ? 'Set' : 'Not Set',
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID ? 'Set' : 'Not Set',
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET ? 'Set' : 'Not Set',
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID ? 'Set' : 'Not Set',
+  appId: process.env.REACT_APP_FIREBASE_APP_ID ? 'Set' : 'Not Set',
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID ? 'Set' : 'Not Set'
+});
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -127,4 +138,5 @@ export const updateSettingsInFirestore = async (settings) => {
   }
 };
 
-export { app, analytics, db, auth };
+// Export everything
+export { app, analytics, db, auth, firebaseConfig };
