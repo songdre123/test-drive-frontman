@@ -1,12 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import Modal from '../common/modal';
+import { useNavigate } from 'react-router-dom';
 import { useFirebaseData } from '../../hooks/useFirebaseData';
 import { useRoundRobin } from '../../hooks/useRoundRobin';
 import { useToast } from '../../hooks/useToast';
 import { updateCarInFirestore, updateSalespersonInFirestore } from '../../utils/firebaseUtils';
+import Spinner from '../common/Spinner';
 
-function AdminPanel({ setView }) {
-  const { cars, salespeople } = useFirebaseData();
+function AdminPanel() {
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const { cars, salespeople } = useFirebaseData(setIsLoading, setLoadError);
   const { handleAddCar, handleDeleteCar, handleAddSalesperson, handleDeleteSalesperson } = useRoundRobin();
   const { addToast } = useToast();
   const [adminForm, setAdminForm] = useState({
@@ -79,11 +84,39 @@ function AdminPanel({ setView }) {
     }
   }, [editSalesperson, addToast]);
 
+  if (loadError) {
+    return (
+      <div className="max-w-xl mx-auto p-6">
+        <div className="card">
+          <h2 className="text-2xl font-bold text-red-400 mb-4">Error Loading Data</h2>
+          <p className="text-gray-300 mb-4">{loadError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="btn-primary"
+            aria-label="Retry loading"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-xl mx-auto p-6">
+        <div className="card flex justify-center items-center min-h-[200px]">
+          <Spinner />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-xl mx-auto p-6">
       <div className="card">
         <button
-          onClick={() => setView('dashboard')}
+          onClick={() => navigate('/')}
           className="text-blue-400 hover:text-blue-300 mb-4"
           aria-label="Back to dashboard"
         >

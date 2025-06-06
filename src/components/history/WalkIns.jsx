@@ -1,10 +1,12 @@
 import React, { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useFirebaseData } from '../../hooks/useFirebaseData';
 import { useRoundRobin } from '../../hooks/useRoundRobin';
 import { useToast } from '../../hooks/useToast';
 import Papa from 'papaparse';
 
-function WalkIns({ setView }) {
+function WalkIns() {
+  const navigate = useNavigate();
   const { walkins } = useFirebaseData();
   const { handleToggleTestDrive } = useRoundRobin();
   const { addToast } = useToast();
@@ -28,7 +30,7 @@ function WalkIns({ setView }) {
     link.click();
     document.body.removeChild(link);
     addToast('Exported walk-ins as CSV', 'success');
-  }, [walkins, addToast]);
+  }, [walkins, addToast, navigate]);
 
   const onToggleTestDrive = useCallback(
     async (walkinId) => {
@@ -94,7 +96,7 @@ function WalkIns({ setView }) {
           </div>
         )}
         <button
-          onClick={() => setView('dashboard')}
+          onClick={() => navigate('/')}
           className="mt-4 text-blue-400 hover:text-blue-300"
           aria-label="Back to dashboard"
         >

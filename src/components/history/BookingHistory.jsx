@@ -1,11 +1,13 @@
 import React, { useCallback, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useFirebaseData } from '../../hooks/useFirebaseData';
 import { useToast } from '../../hooks/useToast';
 import ConfirmationDialog from '../common/ConfirmationDialog';
 import { clearBookings } from '../../utils/firebaseUtils';
 import Papa from 'papaparse';
 
-function BookingHistory({ setView }) {
+function BookingHistory() {
+  const navigate = useNavigate();
   const { completedBookings } = useFirebaseData();
   const { addToast } = useToast();
   const [confirmation, setConfirmation] = useState(null);
@@ -90,7 +92,7 @@ function BookingHistory({ setView }) {
           </div>
         )}
         <button
-          onClick={() => setView('dashboard')}
+          onClick={() => navigate('/')}
           className="mt-4 text-blue-400 hover:text-blue-300"
           aria-label="Back to dashboard"
         >

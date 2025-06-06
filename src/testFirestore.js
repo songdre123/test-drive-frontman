@@ -13,9 +13,13 @@ export async function testFirestore() {
       exists: docSnap.exists(),
       data: docSnap.exists() ? docSnap.data() : null,
     });
+    if (!docSnap.exists()) {
+      console.error('[testFirestore] Error: test/ping document does not exist.');
+      throw new Error('Firestore test/ping document not found.');
+    }
     return true;
   } catch (error) {
-    console.error('[testFirestore] Error:', error);
+    console.error('[testFirestore] Error:', error.message);
     throw error;
   }
 }

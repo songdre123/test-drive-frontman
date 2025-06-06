@@ -1,10 +1,12 @@
 import React, { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useFirebaseData } from '../../hooks/useFirebaseData';
 import { useRoundRobin } from '../../hooks/useRoundRobin';
 import { useToast } from '../../hooks/useToast';
 import { getSingaporeTime } from '../../utils/dateUtils';
 
-function WalkInForm({ setView }) {
+function WalkInForm() {
+  const navigate = useNavigate();
   const { cars } = useFirebaseData();
   const { handleRecordWalkIn, getNextSalesperson } = useRoundRobin();
   const { addToast } = useToast();
@@ -18,12 +20,12 @@ function WalkInForm({ setView }) {
     e.preventDefault();
     try {
       await handleRecordWalkIn(walkInForm);
-      setView('dashboard');
+      navigate('/');
       addToast('Walk-in recorded', 'success');
     } catch (error) {
       addToast('Failed to record walk-in', 'error');
     }
-  }, [walkInForm, handleRecordWalkIn, setView, addToast]);
+  }, [walkInForm, handleRecordWalkIn, navigate, addToast]);
 
   return (
     <div className="max-w-lg mx-auto p-6">
@@ -82,7 +84,7 @@ function WalkInForm({ setView }) {
           </button>
         </div>
         <button
-          onClick={() => setView('dashboard')}
+          onClick={() => navigate('/')}
           className="mt-4 text-blue-400 hover:text-blue-300 font-semibold"
           aria-label="Back to dashboard"
         >

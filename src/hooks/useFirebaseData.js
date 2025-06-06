@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { updateSettingsInFirestore } from '../utils/firebaseUtils';
 
-export function useFirebaseData(setLoadError, setIsLoading) {
+export function useFirebaseData(setIsLoading, setLoadError) {
   const [currentMode, setCurrentMode] = useState('event');
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [teams, setTeams] = useState([]);
@@ -19,24 +19,42 @@ export function useFirebaseData(setLoadError, setIsLoading) {
   const [walkins, setWalkins] = useState([]);
   
   useEffect(() => {
+    if (!setIsLoading) {
+      console.error('[useFirebaseData] setIsLoading function not provided');
+      return;
+    }
+
     console.log('[useFirebaseData] Starting Firestore listeners setup...');
     let isMounted = true;
     let listenersSetup = 0;
+    let listenersWithError = 0;
     const totalListeners = 6; // settings, bookings, walkins, teams, cars, salespeople
     
     const checkAllLoaded = () => {
       listenersSetup++;
       console.log(`[useFirebaseData] Listeners setup: ${listenersSetup}/${totalListeners}`);
-      if (listenersSetup >= totalListeners && setIsLoading) {
+      if (listenersSetup >= totalListeners) {
         console.log('[useFirebaseData] All listeners ready, setting loading to false');
         setIsLoading(false);
       }
     };
 
+    const handleError = (error, source) => {
+      listenersWithError++;
+      console.error(`[useFirebaseData] Error in ${source}:`, error);
+      setLoadError?.(`Failed to load ${source}: ${error.message}`);
+      
+      // If all listeners have errored out or completed, stop loading
+      if (listenersWithError + listenersSetup >= totalListeners) {
+        setIsLoading(false);
+      }
+    };
+
     const timeoutId = setTimeout(() => {
-      if (isMounted) {
+      if (isMounted && listenersSetup + listenersWithError < totalListeners) {
         console.error('[useFirebaseData] Firestore listeners timeout after 10 seconds');
         setLoadError?.('Failed to load data: Connection timed out');
+        setIsLoading(false);
       }
     }, 10000);
 
@@ -48,6 +66,7 @@ export function useFirebaseData(setLoadError, setIsLoading) {
       }, 
       (error) => {
         console.error('[useFirebaseData] Test ping error:', error);
+        handleError(error, 'ping test');
       }
     );
 
@@ -66,12 +85,12 @@ export function useFirebaseData(setLoadError, setIsLoading) {
           checkAllLoaded();
         } catch (error) {
           console.error('[useFirebaseData] Settings listener error:', error);
-          setLoadError?.('Failed to load settings');
+          handleError(error, 'settings');
         }
       },
       (error) => {
         console.error('[useFirebaseData] Settings snapshot error:', error);
-        setLoadError?.('Failed to connect to settings: ' + error.message);
+        handleError(error, 'settings');
       }
     );
 
@@ -91,12 +110,12 @@ export function useFirebaseData(setLoadError, setIsLoading) {
           checkAllLoaded();
         } catch (error) {
           console.error('[useFirebaseData] Bookings listener error:', error);
-          setLoadError?.('Failed to load bookings');
+          handleError(error, 'bookings');
         }
       },
       (error) => {
         console.error('[useFirebaseData] Bookings snapshot error:', error);
-        setLoadError?.('Failed to connect to bookings: ' + error.message);
+        handleError(error, 'bookings');
       }
     );
 
@@ -110,12 +129,12 @@ export function useFirebaseData(setLoadError, setIsLoading) {
           checkAllLoaded();
         } catch (error) {
           console.error('[useFirebaseData] Walkins listener error:', error);
-          setLoadError?.('Failed to load walk-ins');
+          handleError(error, 'walk-ins');
         }
       },
       (error) => {
         console.error('[useFirebaseData] Walkins snapshot error:', error);
-        setLoadError?.('Failed to connect to walk-ins: ' + error.message);
+        handleError(error, 'walk-ins');
       }
     );
 
@@ -129,12 +148,12 @@ export function useFirebaseData(setLoadError, setIsLoading) {
           checkAllLoaded();
         } catch (error) {
           console.error('[useFirebaseData] Teams listener error:', error);
-          setLoadError?.('Failed to load teams');
+          handleError(error, 'teams');
         }
       },
       (error) => {
         console.error('[useFirebaseData] Teams snapshot error:', error);
-        setLoadError?.('Failed to connect to teams: ' + error.message);
+        handleError(error, 'teams');
       }
     );
 
@@ -164,12 +183,12 @@ export function useFirebaseData(setLoadError, setIsLoading) {
           checkAllLoaded();
         } catch (error) {
           console.error('[useFirebaseData] Cars listener error:', error);
-          setLoadError?.('Failed to load cars');
+          handleError(error, 'cars');
         }
       },
       (error) => {
         console.error('[useFirebaseData] Cars snapshot error:', error);
-        setLoadError?.('Failed to connect to cars: ' + error.message);
+        handleError(error, 'cars');
       }
     );
 
@@ -179,22 +198,19 @@ export function useFirebaseData(setLoadError, setIsLoading) {
         if (!isMounted) return;
         console.log('[useFirebaseData] Salespeople snapshot received:', snapshot.docs.length);
         try {
-          let salespeopleData = snapshot.docs
-            .map((doc) => ({
-              id: parseInt(doc.id),
-              ...doc.data(),
-              isOnDuty: doc.data().isOnDuty ?? true,
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name));
+          let salespeopleData = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
           if (salespeopleData.length === 0) {
             console.log('[useFirebaseData] No salespeople found, initializing defaults');
             const defaultSalespeople = [
-              { id: 1, name: 'Cai YuTong', mobileNumber: null, isOnDuty: true },
-              { id: 2, name: 'Daryl Han', mobileNumber: null, isOnDuty: true },
-              { id: 3, name: 'Sherley Lee', mobileNumber: null, isOnDuty: true },
-            ].sort((a, b) => a.name.localeCompare(b.name));
+              { id: '1', name: 'John Doe', isOnDuty: true, mobileNumber: '91234567' },
+              { id: '2', name: 'Jane Smith', isOnDuty: true, mobileNumber: '92345678' },
+              { id: '3', name: 'Mike Johnson', isOnDuty: true, mobileNumber: '93456789' },
+            ];
             for (const sp of defaultSalespeople) {
-              await setDoc(doc(db, 'salespeople', sp.id.toString()), sp);
+              await setDoc(doc(db, 'salespeople', sp.id), sp);
             }
             salespeopleData = defaultSalespeople;
           }
@@ -202,12 +218,12 @@ export function useFirebaseData(setLoadError, setIsLoading) {
           checkAllLoaded();
         } catch (error) {
           console.error('[useFirebaseData] Salespeople listener error:', error);
-          setLoadError?.('Failed to load salespeople');
+          handleError(error, 'salespeople');
         }
       },
       (error) => {
         console.error('[useFirebaseData] Salespeople snapshot error:', error);
-        setLoadError?.('Failed to connect to salespeople: ' + error.message);
+        handleError(error, 'salespeople');
       }
     );
 
@@ -247,14 +263,22 @@ export function useFirebaseData(setLoadError, setIsLoading) {
 
   return {
     currentMode,
-    setCurrentMode: updateMode,
     selectedTeamId,
-    setSelectedTeamId: updateSelectedTeam,
     teams,
     cars,
     salespeople,
     activeBookings,
     completedBookings,
     walkins,
+    setCurrentMode,
+    setSelectedTeamId,
+    setTeams,
+    setCars,
+    setSalespeople,
+    setActiveBookings,
+    setCompletedBookings,
+    setWalkins,
+    updateMode,
+    updateSelectedTeam,
   };
 }

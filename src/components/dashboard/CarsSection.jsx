@@ -1,111 +1,111 @@
 import React from 'react';
 
 const CarsSection = React.memo(({
-  cars, carOrder, activeBookings, walkins, handleToggleCarAvailability,
-  handleReturnCar, handleMoveCarOrder, handleProcessQueue, handleRemoveFromQueue
+  headerStyle, cars, carOrder, activeBookings, walkins, handleToggleCarAvailability,
+  handleReturnCar, handleMoveCarOrder, handleProcessQueue, handleRemoveFromQueue, salespeople
 }) => (
-  <div className="card">
-    <h2 className="text-2xl font-bold text-gray-100 mb-4">Cars</h2>
-    {cars.length === 0 ? (
-      <p className="text-gray-400">No cars available.</p>
-    ) : (
-      <div className="space-y-3">
-        {carOrder.map((carId) => {
-          const car = cars.find((c) => c.id === carId);
-          if (!car) return null;
-          const booking = activeBookings.find((b) => b.carId === car.id);
-          const walkin = walkins.find((w) => w.carId === car.id && !w.testDriveCompleted);
-          return (
-            <div key={car.id} className="card bg-gray-700">
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-gray-200 font-semibold">
-                    {car.model} ({car.numberPlate || 'N/A'})
-                  </div>
-                  <div className="text-sm text-gray-400">
-                    Status: {car.available ? (
-                      <span className="text-green-400">Available</span>
-                    ) : (
-                      <span className="text-red-400">In Use</span>
-                    )}
-                  </div>
-                  {(booking || walkin) && (
-                    <div className="text-sm text-gray-400 mt-1">
-                      Assigned to: {booking ? booking.salespersonName : walkin.salespersonName}
-                    </div>
-                  )}
-                </div>
+  <div className="bg-gray-800 rounded-lg p-4">
+    <h2 className={headerStyle}>Cars</h2>
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {carOrder.map((carId) => {
+        const car = cars.find((c) => c.id === carId);
+        if (!car) return null;
+        
+        // Find active booking or walk-in
+        const booking = activeBookings.find((b) => b.carId === car.id && b.status === 'active');
+        const walkin = walkins.find((w) => w.carId === car.id && !w.testDriveCompleted);
+        
+        // Determine if car is actually in use
+        const isInUse = !car.available && (booking || walkin);
+        
+        return (
+          <div
+            key={car.id}
+            className="bg-gray-700 rounded-lg p-4 flex flex-col"
+          >
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-100">{car.model}</h3>
+                {car.numberPlate && (
+                  <p className="text-sm text-gray-300">{car.numberPlate}</p>
+                )}
+              </div>
+              <div className="flex flex-col space-y-2">
                 <div className="flex space-x-2">
                   <button
                     onClick={() => handleToggleCarAvailability(car.id)}
-                    className={`btn ${car.available ? 'btn-danger' : 'btn-primary'}`}
-                    aria-label={`${car.available ? 'Mark unavailable' : 'Mark available'} for ${car.model}`}
+                    className={`px-2 py-1 rounded ${
+                      car.available
+                        ? 'bg-green-500 hover:bg-green-600'
+                        : 'bg-red-500 hover:bg-red-600'
+                    } text-white text-sm`}
                   >
-                    {car.available ? 'Mark Unavailable' : 'Mark Available'}
+                    {car.available ? 'Available' : 'Unavailable'}
                   </button>
-                  {!car.available && (
+                  {isInUse && (
                     <button
                       onClick={() => handleReturnCar(car.id)}
-                      className="btn-primary"
-                      aria-label={`Return ${car.model}`}
+                      className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm"
                     >
                       Return
                     </button>
                   )}
                 </div>
-              </div>
-              {car.queue.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-sm text-gray-400 font-semibold">Queue:</div>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {car.queue.map((q, index) => (
-                      <div
-                        key={index}
-                        className="text-sm text-gray-200 bg-gray-600 px-2 py-1 rounded-md flex items-center"
-                      >
-                        {q.salespersonName}
-                        <button
-                          onClick={() => handleRemoveFromQueue(car.id, q.salespersonId)}
-                          className="ml-2 text-red-400 hover:text-red-300"
-                          aria-label={`Remove ${q.salespersonName} from queue`}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                {car.queue?.length > 0 && (
                   <button
                     onClick={() => handleProcessQueue(car.id)}
-                    className="mt-2 btn-primary"
-                    aria-label={`Process queue for ${car.model}`}
+                    className="w-full px-2 py-1 bg-green-500 hover:bg-green-600 text-white rounded text-sm"
                   >
-                    Process Queue
+                    Process Queue ({car.queue.length})
                   </button>
-                </div>
-              )}
-              <div className="mt-2 flex space-x-2">
-                <button
-                  onClick={() => handleMoveCarOrder(car.id, 'up')}
-                  disabled={carOrder.indexOf(car.id) === 0}
-                  className="btn-secondary px-2 py-1 disabled:bg-gray-500"
-                  aria-label={`Move ${car.model} up`}
-                >
-                  ↑
-                </button>
-                <button
-                  onClick={() => handleMoveCarOrder(car.id, 'down')}
-                  disabled={carOrder.indexOf(car.id) === carOrder.length - 1}
-                  className="btn-secondary px-2 py-1 disabled:bg-gray-500"
-                  aria-label={`Move ${car.model} down`}
-                >
-                  ↓
-                </button>
+                )}
               </div>
             </div>
-          );
-        })}
-      </div>
-    )}
+            {booking && (
+              <div className="mt-2 p-2 bg-gray-600 rounded">
+                <p className="text-sm text-gray-200">
+                  Booked by: {booking.salespersonName}
+                </p>
+                <p className="text-xs text-gray-400">
+                  Time: {new Date(booking.timestamp).toLocaleTimeString()}
+                </p>
+              </div>
+            )}
+            {walkin && (
+              <div className="mt-2 p-2 bg-gray-600 rounded">
+                <p className="text-sm text-gray-200">
+                  Walk-in: {walkin.salespersonName}
+                </p>
+                <p className="text-xs text-gray-400">
+                  Time: {new Date(walkin.walkInTime).toLocaleTimeString()}
+                </p>
+              </div>
+            )}
+            {car.queue?.length > 0 && (
+              <div className="mt-2">
+                <p className="text-sm text-gray-300 mb-1">Queue:</p>
+                {car.queue.map((q, index) => {
+                  const sp = salespeople.find((s) => s.id === q.salespersonId);
+                  return (
+                    <div key={index} className="flex justify-between items-center bg-gray-600 rounded p-2 mb-1">
+                      <span className="text-sm text-gray-200">
+                        {sp?.name || 'Unknown'}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveFromQueue(car.id, q.salespersonId)}
+                        className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   </div>
 ));
 

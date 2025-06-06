@@ -19,7 +19,21 @@ export async function updateTeamInFirestore(teamId, teamData) {
 
 export async function updateSettingsInFirestore(settings) {
   const settingsRef = doc(db, 'settings', 'orders');
-  await updateDoc(settingsRef, settings, { merge: true });
+  // Sanitize settings to prevent undefined values
+  const sanitizedSettings = {};
+  for (const key in settings) {
+    if (settings[key] !== undefined) {
+      sanitizedSettings[key] = settings[key];
+    } else if (key === 'selectedTeamId') {
+      // Explicitly set selectedTeamId to null if it's undefined
+      // or handle as per your application's logic (e.g., remove the key)
+      sanitizedSettings[key] = null; 
+    }
+    // Add other specific key handlings if needed
+  }
+  // Use setDoc with merge: true to create the document if it doesn't exist,
+  // or update it if it does.
+  await setDoc(settingsRef, sanitizedSettings, { merge: true });
 }
 
 export async function updateCarInFirestore(carData) {

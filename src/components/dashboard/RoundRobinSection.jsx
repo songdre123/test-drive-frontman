@@ -1,70 +1,84 @@
-import React from 'react';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import React, { useState } from 'react';
+import { useToast } from '../../hooks/useToast';
 
 const RoundRobinSection = React.memo(({
-  roundRobinOrder, salespeople, handleMoveSalesperson, isRoundRobinDropDisabled
+  headerStyle, roundRobinOrder, salespeople, handleMoveSalesperson, isRoundRobinDropDisabled
 }) => {
-  const handleDragEnd = (result) => {
-    if (!result.destination) return;
-    const { source, destination } = result;
-    const reordered = Array.from(roundRobinOrder);
-    const [moved] = reordered.splice(source.index, 1);
-    reordered.splice(destination.index, 0, moved);
-    handleMoveSalesperson(reordered);
+  const [loading, setLoading] = useState(false);
+  const { addToast } = useToast();
+
+  const handleMoveSalespersonOrder = async (index, direction) => {
+    if (isRoundRobinDropDisabled) return;
+    const currentOrder = Array.isArray(roundRobinOrder) ? roundRobinOrder : [];
+    if (index >= currentOrder.length) {
+      addToast && addToast("Index out of bounds.", 'error');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const reordered = Array.from(currentOrder);
+      if (direction === 'up' && index > 0) {
+        [reordered[index], reordered[index - 1]] = [reordered[index - 1], reordered[index]];
+      } else if (direction === 'down' && index < reordered.length - 1) {
+        [reordered[index], reordered[index + 1]] = [reordered[index + 1], reordered[index]];
+      }
+      const maybePromise = handleMoveSalesperson(reordered);
+      if (maybePromise && maybePromise.then) await maybePromise;
+      addToast && addToast('Round-robin order updated!', 'success');
+    } catch (err) {
+      addToast && addToast('Failed to update round-robin order', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
+  
+  const currentOrder = Array.isArray(roundRobinOrder) ? roundRobinOrder : [];
+  const safeSalespeople = Array.isArray(salespeople) ? salespeople : [];
 
   return (
     <div className="card">
-      <h2 className="text-2xl font-bold text-gray-100 mb-4">Round-Robin Order</h2>
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <Droppable droppableId="roundRobin" isDropDisabled={isRoundRobinDropDisabled}>
-          {(provided) => (
-            <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
-              {roundRobinOrder.length === 0 ? (
-                <p className="text-gray-400">No salespeople in round-robin.</p>
-              ) : (
-                roundRobinOrder.map((spId, index) => {
-                  const sp = salespeople.find((s) => s.id === spId);
-                  if (!sp) return null;
-                  return (
-                    <Draggable key={sp.id} draggableId={sp.id.toString()} index={index}>
-                      {(provided) => (
-                        <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          className="p-3 bg-gray-700 rounded-md flex justify-between items-center"
-                        >
-                          <span className="text-gray-200">{sp.name}</span>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleMoveSalesperson(sp.id, 'up')}
-                              disabled={index === 0}
-                              className="btn-secondary px-2 py-1 disabled:bg-gray-500"
-                              aria-label={`Move ${sp.name} up in round-robin`}
-                            >
-                              ↑
-                            </button>
-                            <button
-                              onClick={() => handleMoveSalesperson(sp.id, 'down')}
-                              disabled={index === roundRobinOrder.length - 1}
-                              className="btn-secondary px-2 py-1 disabled:bg-gray-500"
-                              aria-label={`Move ${sp.name} down in round-robin`}
-                            >
-                              ↓
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </Draggable>
-                  );
-                })
-              )}
-              {provided.placeholder}
-            </div>
-          )}
-        </Droppable>
-      </DragDropContext>
+      <h2 className={headerStyle || "text-2xl font-bold text-gray-100 mb-4"}>Round-Robin Order</h2>
+      {loading && <div className="text-blue-400 text-center py-2">Updating order...</div>}
+      <div className="space-y-2 min-h-[50px]">
+        {currentOrder.length === 0 ? (
+          <p className="text-gray-400 text-center py-4">No salespeople in round-robin.</p>
+        ) : (
+          currentOrder.map((spId, index) => {
+            const sp = safeSalespeople.find((s) => s.id === spId);
+            if (!sp) {
+              return <div key={`missing-${spId}-${index}`} className="text-xs text-red-500 p-2">Salesperson data missing for ID: {spId}</div>;
+            }
+            return (
+              <div
+                key={sp.id}
+                className={`p-3 bg-gray-700 rounded-md flex justify-between items-center shadow
+                          ${isRoundRobinDropDisabled ? 'cursor-not-allowed opacity-70' : 'hover:bg-gray-600'}`}
+              >
+                <span className="text-gray-200">{sp.name}</span>
+                <div className="flex space-x-1">
+                  <button
+                    onClick={() => handleMoveSalespersonOrder(index, 'up')}
+                    disabled={index === 0 || isRoundRobinDropDisabled}
+                    className="btn-secondary p-1 text-xs"
+                    aria-label={`Move ${sp.name} up in round-robin`}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    onClick={() => handleMoveSalespersonOrder(index, 'down')}
+                    disabled={index === currentOrder.length - 1 || isRoundRobinDropDisabled}
+                    className="btn-secondary p-1 text-xs"
+                    aria-label={`Move ${sp.name} down in round-robin`}
+                  >
+                    ↓
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 });

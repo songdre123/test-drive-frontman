@@ -2,11 +2,9 @@ import React, { useCallback, useEffect } from 'react';
 import { useFirebaseData } from '../../hooks/useFirebaseData';
 import { useRoundRobin } from '../../hooks/useRoundRobin';
 import { useToast } from '../../hooks/useToast';
-import CarsSection from './CarsSection';
-import RoundRobinSection from './RoundRobinSection';
-import SalespeopleSection from './SalespeopleSection';
-import TeamsSection from './TeamsSection';
-import EventRoundRobin from './EventRoundRobin';
+import EventPage from '../../pages/EventPage';
+import DayToDayPage from '../../pages/DayToDayPage';
+import Sidebar from '../common/Sidebar';
 
 function Dashboard({ setView, setIsLoading, setLoadError }) {
   useEffect(() => {
@@ -14,115 +12,70 @@ function Dashboard({ setView, setIsLoading, setLoadError }) {
     return () => console.log('Dashboard.jsx unmounted');
   }, []);
 
-  const { currentMode, setCurrentMode, teams, selectedTeamId, setSelectedTeamId } = useFirebaseData(setLoadError);
+  const { currentMode, setCurrentMode, teams, selectedTeamId, setSelectedTeamId } = useFirebaseData(setLoadError, setIsLoading);
   const { addToast } = useToast();
   const {
     cars, carOrder, salespeople, salespeopleOrder, roundRobinOrder,
     activeBookings, walkins, eventRoundRobin, handleToggleCarAvailability,
     handleReturnCar, handleMoveCarOrder, handleProcessQueue, handleRemoveFromQueue,
     handleToggleDuty, handleMoveSalespersonOrder, handleDeleteSalesperson,
-    handleMoveSalesperson, saveEventRoundRobin
+    handleMoveSalesperson, saveEventRoundRobin, handleBookingSubmit
   } = useRoundRobin(setIsLoading, setLoadError);
 
   const handleModeSwitch = useCallback(async () => {
     const newMode = currentMode === 'event' ? 'day-to-day' : 'event';
     try {
       setCurrentMode(newMode);
-      setView('dashboard');
       addToast(`Switched to ${newMode === 'event' ? 'Event' : 'Day-to-Day'} Mode`, 'success');
     } catch (error) {
       addToast('Failed to switch mode', 'error');
     }
-  }, [currentMode, setCurrentMode, setView, addToast]);
+  }, [currentMode, setCurrentMode, addToast]);
 
   const handleSelectTeam = useCallback(async (teamId) => {
     try {
+      if (currentMode !== 'day-to-day') {
+        setCurrentMode('day-to-day');
+      }
+      
       setSelectedTeamId(teamId);
-      addToast(`Selected team: ${teams.find((t) => t.id === teamId)?.name || 'None'}`, 'success');
+      if (teamId) {
+        const team = teams.find((t) => t.id === teamId);
+        if (team) {
+          const teamMemberIds = team.salespersonIds || [];
+          handleMoveSalesperson(teamMemberIds);
+          addToast(`Selected team: ${team.name}`, 'success');
+        }
+      } else {
+        handleMoveSalesperson([]);
+        addToast('No team selected', 'success');
+      }
     } catch (error) {
+      console.error('Team selection error:', error);
       addToast('Failed to select team', 'error');
     }
-  }, [setSelectedTeamId, teams, addToast]);
+  }, [setSelectedTeamId, teams, handleMoveSalesperson, addToast, currentMode, setCurrentMode]);
+
+  const sectionHeaderStyle = "text-xl font-semibold text-gray-100 mb-4";
 
   return (
     <div className="flex min-h-screen">
-      <div className="w-64 bg-gray-800 p-4 shadow-lg">
-        <h2 className="text-2xl font-bold text-gray-100 mb-6">Test Drive Manager</h2>
-        <nav className="space-y-2">
-          <button
-            onClick={() => setView('dashboard')}
-            className="w-full text-left px-4 py-2 text-gray-100 bg-gray-700 rounded-md hover:bg-gray-600"
-          >
-            Dashboard
-          </button>
-          {currentMode === 'event' ? (
-            <>
-              <button
-                onClick={() => setView('booking')}
-                className="w-full text-left px-4 py-2 text-gray-100 hover:bg-gray-600 rounded-md"
-              >
-                Book Test Drive
-              </button>
-              <button
-                onClick={() => setView('history')}
-                className="w-full text-left px-4 py-2 text-gray-100 hover:bg-gray-600 rounded-md"
-              >
-                Booking History
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setView('walkInForm')}
-                className="w-full text-left px-4 py-2 text-gray-100 hover:bg-gray-600 rounded-md"
-              >
-                Record Walk-In
-              </button>
-              <button
-                onClick={() => setView('walkins')}
-                className="w-full text-left px-4 py-2 text-gray-100 hover:bg-gray-600 rounded-md"
-              >
-                View Walk-Ins
-              </button>
-              <button
-                onClick={() => setView('team')}
-                className="w-full text-left px-4 py-2 text-gray-100 hover:bg-gray-600 rounded-md"
-              >
-                Manage Teams
-              </button>
-            </>
-          )}
-          <button
-            onClick={() => setView('admin')}
-            className="w-full text-left px-4 py-2 text-gray-100 hover:bg-gray-600 rounded-md"
-          >
-            Admin Panel
-          </button>
-        </nav>
-      </div>
+      <Sidebar
+        setView={setView}
+        currentMode={currentMode}
+        handleModeSwitch={handleModeSwitch}
+      />
+
       <div className="flex-1 p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-100">
             {currentMode === 'event' ? 'Event' : 'Day-to-Day'} Dashboard
           </h1>
-          <button
-            onClick={handleModeSwitch}
-            className="btn-primary"
-            aria-label={`Switch to ${currentMode === 'event' ? 'Day-to-Day' : 'Event'} mode`}
-          >
-            Switch to {currentMode === 'event' ? 'Day-to-Day' : 'Event'} Mode
-          </button>
         </div>
-        {currentMode === 'event' && (
-          <EventRoundRobin
-            salespeople={salespeople}
-            salespeopleOrder={salespeopleOrder}
-            eventRoundRobin={eventRoundRobin}
-            saveEventRoundRobin={saveEventRoundRobin}
-          />
-        )}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <CarsSection
+
+        {currentMode === 'event' ? (
+          <EventPage
+            headerStyle={sectionHeaderStyle}
             cars={cars}
             carOrder={carOrder}
             activeBookings={activeBookings}
@@ -132,33 +85,32 @@ function Dashboard({ setView, setIsLoading, setLoadError }) {
             handleMoveCarOrder={handleMoveCarOrder}
             handleProcessQueue={handleProcessQueue}
             handleRemoveFromQueue={handleRemoveFromQueue}
-          />
-          <RoundRobinSection
-            roundRobinOrder={roundRobinOrder}
-            salespeople={salespeople}
-            handleMoveSalesperson={handleMoveSalesperson}
-            isRoundRobinDropDisabled={false}
-          />
-          <SalespeopleSection
             salespeople={salespeople}
             salespeopleOrder={salespeopleOrder}
+            eventRoundRobin={eventRoundRobin}
+            saveEventRoundRobin={saveEventRoundRobin}
+          />
+        ) : (
+          <DayToDayPage
+            headerStyle={sectionHeaderStyle}
+            cars={cars}
+            carOrder={carOrder}
             activeBookings={activeBookings}
             walkins={walkins}
-            currentMode={currentMode}
-            handleToggleDuty={handleToggleDuty}
-            handleMoveSalespersonOrder={handleMoveSalespersonOrder}
-            handleDeleteSalesperson={handleDeleteSalesperson}
+            handleToggleCarAvailability={handleToggleCarAvailability}
+            handleReturnCar={handleReturnCar}
+            handleMoveCarOrder={handleMoveCarOrder}
+            handleProcessQueue={handleProcessQueue}
+            handleRemoveFromQueue={handleRemoveFromQueue}
+            salespeople={salespeople}
+            roundRobinOrder={roundRobinOrder}
+            handleMoveSalesperson={handleMoveSalesperson}
+            teams={teams}
+            selectedTeamId={selectedTeamId}
+            handleSelectTeam={handleSelectTeam}
+            setView={setView}
           />
-          {currentMode === 'day-to-day' && (
-            <TeamsSection
-              teams={teams}
-              selectedTeamId={selectedTeamId}
-              salespeople={salespeople}
-              handleSelectTeam={handleSelectTeam}
-              setView={setView}
-            />
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
