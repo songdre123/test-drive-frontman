@@ -81,9 +81,17 @@ const App = () => {
 
   const getNextSalesperson = useCallback(() => {
     if (roundRobinOrder.length === 0) return { name: "No salespeople" };
-    const nextIndex = (lastRoundRobinIndex + 1) % roundRobinOrder.length;
+    
+    // Filter out salespeople that are not in the round robin order
+    const availableSalespeople = salespeople.filter(sp => 
+      roundRobinOrder.includes(String(sp.id))
+    );
+    
+    if (availableSalespeople.length === 0) return { name: "No salespeople" };
+    
+    const nextIndex = (lastRoundRobinIndex + 1) % availableSalespeople.length;
     const nextSalespersonId = roundRobinOrder[nextIndex];
-    return salespeople.find(sp => sp.id === nextSalespersonId) || { name: "No salespeople" };
+    return availableSalespeople.find(sp => String(sp.id) === String(nextSalespersonId)) || { name: "No salespeople" };
   }, [roundRobinOrder, lastRoundRobinIndex, salespeople]);
 
   const handleRemoveFromRoundRobin = async (salespersonId) => {
@@ -109,8 +117,8 @@ const App = () => {
       
       if (!salesperson) {
         addToast('Salesperson not found', 'error');
-        return;
-      }
+      return;
+    }
 
       // Create new booking
       const newBooking = {
@@ -170,14 +178,50 @@ const App = () => {
       // Convert ID to string for Firestore
       const idString = String(carId);
       
+      // Debug logging
+      console.log('Marking car unavailable:', {
+        carId: idString,
+        activeBookings: activeBookings.map(b => ({
+          bookingId: b.id,
+          carId: b.carId,
+          status: b.status
+        }))
+      });
+
+      // Check if car is in any active bookings
+      const carInUse = activeBookings.some(b => {
+        const bookingCarId = String(b.carId);
+        const currentCarId = String(idString);
+        const isActive = b.status === 'active';
+        
+        console.log('Checking booking:', {
+          bookingCarId,
+          currentCarId,
+          isActive,
+          matches: bookingCarId === currentCarId
+        });
+        
+        return bookingCarId === currentCarId && isActive;
+      });
+
+      console.log('Car in use:', carInUse);
+
+      if (carInUse) {
+        addToast("Cannot mark car as unavailable while it's in use", "error");
+      return;
+    }
+      
       // Update Firestore
       const carRef = doc(db, "cars", idString);
-      await updateDoc(carRef, { available: false });
+      await updateDoc(carRef, { 
+        available: false,
+        queue: [] // Clear any existing queue
+      });
       
       // Update local state
       setCars(prev => prev.map(c => 
         String(c.id) === idString
-          ? { ...c, available: false }
+          ? { ...c, available: false, queue: [] }
           : c
       ));
       
@@ -231,13 +275,13 @@ const App = () => {
   const handleAddCar = async (e) => {
     e.preventDefault();
     try {
-      const model = adminForm.newCarModel.trim();
+    const model = adminForm.newCarModel.trim();
       const numberPlate = adminForm.newCarNumberPlate.trim();
 
-      if (!model) {
-        addToast("Please enter a car model", "error");
-        return;
-      }
+    if (!model) {
+      addToast("Please enter a car model", "error");
+      return;
+    }
 
       const newCar = {
         model,
@@ -372,14 +416,14 @@ const App = () => {
             carModel: model,
             carNumberPlate: numberPlate || null
           });
-        } catch (error) {
+    } catch (error) {
           console.warn(`Could not update booking ${booking.id}:`, error);
         }
       }
 
       try {
         await batch.commit();
-      } catch (error) {
+    } catch (error) {
         console.warn("Some booking updates failed:", error);
       }
 
@@ -392,7 +436,7 @@ const App = () => {
 
       setEditCar(null);
       addToast("Car updated successfully", "success");
-    } catch (error) {
+      } catch (error) {
       console.error("Error updating car:", error);
       addToast("Failed to update car", "error");
     }
@@ -482,14 +526,14 @@ const App = () => {
       // Update local booking states
       setActiveBookings(prev => prev.map(b => 
         String(b.salespersonId) === salespersonId
-          ? { ...b, salespersonName: newName }
-          : b
+            ? { ...b, salespersonName: newName }
+            : b
       ));
 
       setCompletedBookings(prev => prev.map(b => 
         String(b.salespersonId) === salespersonId
-          ? { ...b, salespersonName: newName }
-          : b
+            ? { ...b, salespersonName: newName }
+            : b
       ));
 
       setEditSalesperson(null);
@@ -735,10 +779,10 @@ const App = () => {
         addToast("Failed to load data from server", "error");
       }
     };
-    fetchData();
+      fetchData();
   }, []);
 
-  return (
+    return (
     <ToastProvider>
       <Router>
         <div className="min-h-screen bg-gray-900 text-gray-100">
@@ -766,13 +810,13 @@ const App = () => {
               <div className="max-w-4xl mx-auto">
                 <h2 className="text-2xl font-bold mb-6">Booking History</h2>
                 <div className="mb-4 flex justify-end">
-                  <button
+                <button
                     onClick={handleClearHistory}
                     disabled={completedBookings.length === 0}
                     className="bg-error text-white px-6 py-2 rounded-md hover:bg-red-600 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
-                  >
+                >
                     Clear History
-                  </button>
+                </button>
                 </div>
                 {completedBookings.length === 0 ? (
                   <p className="text-gray-400">No completed bookings.</p>
@@ -826,12 +870,12 @@ const App = () => {
                         className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
                         placeholder="Mobile number (e.g., +6591234567)"
                       />
-                      <button
+                <button
                         type="submit"
                         className="w-full bg-green-600 text-white p-3 rounded-md hover:bg-green-700"
-                      >
+                >
                         Add Salesperson
-                      </button>
+                </button>
                     </form>
                     <div className="space-y-2">
                       {salespeople.map((sp) => (
@@ -847,7 +891,7 @@ const App = () => {
                               </span>
                             )}
                           </span>
-                          <button
+                <button
                             onClick={() => handleEditSalesperson(sp)}
                             className="bg-yellow-500 text-white rounded-md px-4 py-2 hover:bg-yellow-600 mr-2"
                           >
@@ -858,10 +902,10 @@ const App = () => {
                             className="bg-red-600 text-white rounded-md px-4 py-2 hover:bg-red-700"
                           >
                             Delete
-                          </button>
-                        </div>
+                </button>
+              </div>
                       ))}
-                    </div>
+            </div>
                   </div>
                   <div className="bg-gray-800 p-6 rounded-md shadow-lg">
                     <h3 className="text-xl font-semibold mb-4">Manage Cars</h3>
@@ -902,7 +946,7 @@ const App = () => {
                             <p className="text-sm text-gray-400">
                               Plate: {car.numberPlate || "N/A"}
                             </p>
-                          </div>
+              </div>
                           <button
                             onClick={() => handleEditCar(car)}
                             className="bg-yellow-500 text-white rounded-md px-4 py-2 hover:bg-yellow-600 mr-2"
@@ -915,7 +959,7 @@ const App = () => {
                           >
                             Delete
                           </button>
-                        </div>
+              </div>
                       ))}
                     </div>
                   </div>
@@ -935,7 +979,7 @@ const App = () => {
                         </button>
                       </div>
                       <div className="space-y-4">
-                        <div>
+              <div>
                           <label className="block text-sm font-medium text-gray-400 mb-1">
                             Model
                           </label>
@@ -944,9 +988,9 @@ const App = () => {
                             value={editCar.model}
                             onChange={(e) => setEditCar({ ...editCar, model: e.target.value })}
                             className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
-                          />
-                        </div>
-                        <div>
+                />
+              </div>
+              <div>
                           <label className="block text-sm font-medium text-gray-400 mb-1">
                             Number Plate
                           </label>
@@ -955,8 +999,8 @@ const App = () => {
                             value={editCar.newNumberPlate}
                             onChange={(e) => setEditCar({ ...editCar, newNumberPlate: e.target.value })}
                             className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
-                          />
-                        </div>
+                />
+              </div>
                         <div className="flex justify-end space-x-2">
                           <button
                             onClick={() => setEditCar(null)}
@@ -970,7 +1014,7 @@ const App = () => {
                           >
                             Save Changes
                           </button>
-                        </div>
+            </div>
                       </div>
                     </div>
                   </div>
@@ -1012,7 +1056,7 @@ const App = () => {
                             className="w-full p-3 border border-gray-600 bg-gray-900 text-gray-100 rounded-md"
                             placeholder="+6591234567"
                           />
-                        </div>
+          </div>
                         <div className="flex justify-end space-x-2">
                           <button
                             onClick={() => setEditSalesperson(null)}
@@ -1026,8 +1070,8 @@ const App = () => {
                           >
                             Save Changes
                           </button>
-                        </div>
-                      </div>
+        </div>
+      </div>
                     </div>
                   </div>
                 )}
@@ -1048,4 +1092,4 @@ const App = () => {
   );
 };
 
-export default App;
+export default App; 

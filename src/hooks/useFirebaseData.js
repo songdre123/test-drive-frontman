@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import {
   collection,
@@ -18,6 +18,12 @@ export function useFirebaseData(setIsLoading, setLoadError) {
   const [completedBookings, setCompletedBookings] = useState([]);
   const [walkins, setWalkins] = useState([]);
   
+  // Add refs to track listener setup
+  const listenersSetupRef = useRef(0);
+  const listenersWithErrorRef = useRef(0);
+  const isMountedRef = useRef(true);
+  const totalListeners = 6; // settings, bookings, walkins, teams, cars, salespeople
+
   useEffect(() => {
     if (!setIsLoading) {
       console.error('[useFirebaseData] setIsLoading function not provided');
@@ -25,79 +31,62 @@ export function useFirebaseData(setIsLoading, setLoadError) {
     }
 
     console.log('[useFirebaseData] Starting Firestore listeners setup...');
-    let isMounted = true;
-    let listenersSetup = 0;
-    let listenersWithError = 0;
-    const totalListeners = 6; // settings, bookings, walkins, teams, cars, salespeople
+    isMountedRef.current = true;
+    listenersSetupRef.current = 0;
+    listenersWithErrorRef.current = 0;
     
     const checkAllLoaded = () => {
-      listenersSetup++;
-      console.log(`[useFirebaseData] Listeners setup: ${listenersSetup}/${totalListeners}`);
-      if (listenersSetup >= totalListeners) {
+      listenersSetupRef.current++;
+      console.log(`[useFirebaseData] Listeners setup: ${listenersSetupRef.current}/${totalListeners}`);
+      if (listenersSetupRef.current >= totalListeners && isMountedRef.current) {
         console.log('[useFirebaseData] All listeners ready, setting loading to false');
         setIsLoading(false);
       }
     };
 
     const handleError = (error, source) => {
-      listenersWithError++;
+      listenersWithErrorRef.current++;
       console.error(`[useFirebaseData] Error in ${source}:`, error);
       setLoadError?.(`Failed to load ${source}: ${error.message}`);
       
-      // If all listeners have errored out or completed, stop loading
-      if (listenersWithError + listenersSetup >= totalListeners) {
+      if (listenersWithErrorRef.current + listenersSetupRef.current >= totalListeners && isMountedRef.current) {
         setIsLoading(false);
       }
     };
 
     const timeoutId = setTimeout(() => {
-      if (isMounted && listenersSetup + listenersWithError < totalListeners) {
+      if (isMountedRef.current && listenersSetupRef.current + listenersWithErrorRef.current < totalListeners) {
         console.error('[useFirebaseData] Firestore listeners timeout after 10 seconds');
         setLoadError?.('Failed to load data: Connection timed out');
         setIsLoading(false);
       }
     }, 10000);
 
-    // Test ping listener (moved inside useEffect)
-    const unsubscribePing = onSnapshot(
-      doc(db, 'test', 'ping'), 
-      (doc) => {
-        console.log('[useFirebaseData] Test ping snapshot:', doc.exists(), doc.data());
-      }, 
-      (error) => {
-        console.error('[useFirebaseData] Test ping error:', error);
-        handleError(error, 'ping test');
-      }
-    );
-
+    // Settings listener
     const unsubscribeSettings = onSnapshot(
-      collection(db, 'settings'),
-      (snapshot) => {
-        if (!isMounted) return;
-        console.log('[useFirebaseData] Settings snapshot received:', snapshot.docs.length);
+      doc(db, 'settings', 'config'),
+      (doc) => {
+        if (!isMountedRef.current) return;
+        console.log('[useFirebaseData] Settings snapshot received:', doc.exists());
         try {
-          let settingsData = {};
-          if (snapshot.docs.length > 0) {
-            settingsData = snapshot.docs[0].data();
-            setCurrentMode(settingsData.currentMode || 'event');
-            setSelectedTeamId(settingsData.selectedTeamId || null);
+          if (doc.exists()) {
+            const data = doc.data();
+            setCurrentMode(data.currentMode || 'event');
+            setSelectedTeamId(data.selectedTeamId || null);
           }
           checkAllLoaded();
         } catch (error) {
-          console.error('[useFirebaseData] Settings listener error:', error);
           handleError(error, 'settings');
         }
       },
-      (error) => {
-        console.error('[useFirebaseData] Settings snapshot error:', error);
-        handleError(error, 'settings');
-      }
+      (error) => handleError(error, 'settings')
     );
 
+    // Bookings listener
     const unsubscribeBookings = onSnapshot(
       collection(db, 'bookings'),
       (snapshot) => {
-        if (!isMounted) return;
+        if (!isMountedRef.current) return;
         console.log('[useFirebaseData] Bookings snapshot received:', snapshot.docs.length);
         try {
           const bookings = snapshot.docs.map((doc) => ({
@@ -109,58 +98,33 @@ export function useFirebaseData(setIsLoading, setLoadError) {
           setCompletedBookings(bookings.filter((b) => b.status === 'completed'));
           checkAllLoaded();
         } catch (error) {
-          console.error('[useFirebaseData] Bookings listener error:', error);
           handleError(error, 'bookings');
         }
       },
-      (error) => {
-        console.error('[useFirebaseData] Bookings snapshot error:', error);
-        handleError(error, 'bookings');
-      }
+      (error) => handleError(error, 'bookings')
     );
 
-    const unsubscribeWalkins = onSnapshot(
-      collection(db, 'walkins'),
-      (snapshot) => {
-        if (!isMounted) return;
-        console.log('[useFirebaseData] Walkins snapshot received:', snapshot.docs.length);
-        try {
-          setWalkins(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-          checkAllLoaded();
-        } catch (error) {
-          console.error('[useFirebaseData] Walkins listener error:', error);
-          handleError(error, 'walk-ins');
-        }
-      },
-      (error) => {
-        console.error('[useFirebaseData] Walkins snapshot error:', error);
-        handleError(error, 'walk-ins');
-      }
-    );
-
+    // Teams listener
     const unsubscribeTeams = onSnapshot(
       collection(db, 'teams'),
       (snapshot) => {
-        if (!isMounted) return;
+        if (!isMountedRef.current) return;
         console.log('[useFirebaseData] Teams snapshot received:', snapshot.docs.length);
         try {
           setTeams(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
           checkAllLoaded();
         } catch (error) {
-          console.error('[useFirebaseData] Teams listener error:', error);
           handleError(error, 'teams');
         }
       },
-      (error) => {
-        console.error('[useFirebaseData] Teams snapshot error:', error);
-        handleError(error, 'teams');
-      }
+      (error) => handleError(error, 'teams')
     );
 
+    // Cars listener
     const unsubscribeCars = onSnapshot(
       collection(db, 'cars'),
       async (snapshot) => {
-        if (!isMounted) return;
+        if (!isMountedRef.current) return;
         console.log('[useFirebaseData] Cars snapshot received:', snapshot.docs.length);
         try {
           let carsData = snapshot.docs.map((doc) => ({
@@ -182,20 +146,17 @@ export function useFirebaseData(setIsLoading, setLoadError) {
           setCars(carsData);
           checkAllLoaded();
         } catch (error) {
-          console.error('[useFirebaseData] Cars listener error:', error);
           handleError(error, 'cars');
         }
       },
-      (error) => {
-        console.error('[useFirebaseData] Cars snapshot error:', error);
-        handleError(error, 'cars');
-      }
+      (error) => handleError(error, 'cars')
     );
 
+    // Salespeople listener
     const unsubscribeSalespeople = onSnapshot(
       collection(db, 'salespeople'),
       async (snapshot) => {
-        if (!isMounted) return;
+        if (!isMountedRef.current) return;
         console.log('[useFirebaseData] Salespeople snapshot received:', snapshot.docs.length);
         try {
           let salespeopleData = snapshot.docs.map((doc) => ({
@@ -217,29 +178,24 @@ export function useFirebaseData(setIsLoading, setLoadError) {
           setSalespeople(salespeopleData);
           checkAllLoaded();
         } catch (error) {
-          console.error('[useFirebaseData] Salespeople listener error:', error);
           handleError(error, 'salespeople');
         }
       },
-      (error) => {
-        console.error('[useFirebaseData] Salespeople snapshot error:', error);
-        handleError(error, 'salespeople');
-      }
+      (error) => handleError(error, 'salespeople')
     );
 
+    // Cleanup function
     return () => {
       console.log('[useFirebaseData] Cleaning up Firestore listeners');
-      isMounted = false;
+      isMountedRef.current = false;
       clearTimeout(timeoutId);
-      unsubscribePing();
       unsubscribeSettings();
       unsubscribeBookings();
-      unsubscribeWalkins();
       unsubscribeTeams();
       unsubscribeCars();
       unsubscribeSalespeople();
     };
-  }, [setLoadError, setIsLoading]);
+  }, [setLoadError, setIsLoading]); // Only depend on these props
 
   const updateMode = useCallback(async (mode) => {
     try {

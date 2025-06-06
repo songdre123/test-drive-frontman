@@ -62,12 +62,12 @@ function Dashboard({
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const selectedCar = cars.find(car => car.id === parseInt(formData.carId));
+      const selectedCar = cars.find(car => String(car.id) === String(formData.carId));
       if (!selectedCar) {
         throw new Error('Car not found');
       }
 
-      const selectedSalesperson = salespeople.find(sp => sp.id === parseInt(formData.salespersonId));
+      const selectedSalesperson = salespeople.find(sp => String(sp.id) === String(formData.salespersonId));
       if (!selectedSalesperson) {
         throw new Error('Salesperson not found');
       }
@@ -83,13 +83,13 @@ function Dashboard({
       };
 
       // Update car in Firestore
-      await updateDoc(doc(db, "cars", selectedCar.id.toString()), {
+      await updateDoc(doc(db, "cars", String(selectedCar.id)), {
         queue: updatedCar.queue
       });
 
       // Update local state
       setCars(prev => prev.map(car => 
-        car.id === selectedCar.id ? updatedCar : car
+        String(car.id) === String(selectedCar.id) ? updatedCar : car
       ));
 
       setShowBookingForm(false);
@@ -147,19 +147,32 @@ function Dashboard({
 
   const handleReturnCar = async (carId) => {
     try {
-      const car = cars.find(c => c.id === carId);
+      const car = cars.find(c => String(c.id) === String(carId));
       if (!car) {
         throw new Error('Car not found');
       }
 
+      // Find the active booking for this car
+      const activeBooking = activeBookings.find(b => String(b.carId) === String(carId));
+      if (activeBooking) {
+        // Mark booking as completed in Firestore
+        await updateDoc(doc(db, "bookings", String(activeBooking.id)), {
+          status: 'completed',
+          completedAt: Date.now()
+        });
+
+        // Update local state for bookings
+        setActiveBookings(prev => prev.filter(b => String(b.id) !== String(activeBooking.id)));
+      }
+
       // Update car status in Firestore
-      await updateDoc(doc(db, "cars", carId.toString()), {
+      await updateDoc(doc(db, "cars", String(carId)), {
         available: true
       });
 
-      // Update local state
+      // Update local state for cars
       setCars(prev => prev.map(c => 
-        c.id === carId ? { ...c, available: true } : c
+        String(c.id) === String(carId) ? { ...c, available: true } : c
       ));
 
       addToast('Car marked as available', 'success');
