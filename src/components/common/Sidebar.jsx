@@ -24,20 +24,12 @@ function Sidebar({ currentMode, handleModeSwitch }) {
 
       <nav className="space-y-2">
         <Link
-          to="/"
+          to="/dashboard"
           className={`block px-4 py-2 rounded ${
-            isActive('/') ? 'bg-gray-700' : 'hover:bg-gray-700'
+            isActive('/dashboard') ? 'bg-gray-700' : 'hover:bg-gray-700'
           } text-white`}
         >
           Dashboard
-        </Link>
-        <Link
-          to="/booking"
-          className={`block px-4 py-2 rounded ${
-            isActive('/booking') ? 'bg-gray-700' : 'hover:bg-gray-700'
-          } text-white`}
-        >
-          Record Booking
         </Link>
         <Link
           to="/walk-in"
