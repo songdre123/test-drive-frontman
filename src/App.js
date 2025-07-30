@@ -4,6 +4,7 @@ import { useFirebaseData } from './hooks/useFirebaseData';
 import { useRoundRobin } from './hooks/useRoundRobin';
 import { useToast, ToastProvider } from './hooks/useToast';
 import Dashboard from './components/Dashboard';
+import CustomerQueue from './components/CustomerQueue';
 import { db, firebaseConfig } from "./firebase";
 import {
   collection,
@@ -27,7 +28,11 @@ import {
   deleteCarFromFirestore,
   updateSalespersonInFirestore,
   deleteSalespersonFromFirestore,
-  updateSettingsInFirestore
+  updateSettingsInFirestore,
+  saveCustomerToQueue,
+  deleteCustomerFromQueue,
+  updateCustomerInQueue,
+  getCustomerQueue
 } from './utils/firebaseUtils';
 
 const Toast = ({ message, type, onClose }) => {
@@ -78,6 +83,7 @@ const App = () => {
   const [isRoundRobinDropDisabled, setIsRoundRobinDropDisabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [customerQueue, setCustomerQueue] = useState([]);
 
   const getNextSalesperson = useCallback(() => {
     if (roundRobinOrder.length === 0) return { name: "No salespeople" };
@@ -569,6 +575,30 @@ const App = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Customer Queue Handlers
+  const handleAddCustomerToQueue = async (customer) => {
+    try {
+      const customerId = await saveCustomerToQueue(customer);
+      const newCustomer = { ...customer, id: customerId };
+      setCustomerQueue(prev => [...prev, newCustomer]);
+      addToast("Customer added to queue", "success");
+    } catch (error) {
+      console.error("Error adding customer to queue:", error);
+      addToast("Failed to add customer to queue", "error");
+    }
+  };
+
+  const handleDeleteCustomerFromQueue = async (customerId) => {
+    try {
+      await deleteCustomerFromQueue(customerId);
+      setCustomerQueue(prev => prev.filter(c => c.id !== customerId));
+      addToast("Customer removed from queue", "success");
+    } catch (error) {
+      console.error("Error removing customer from queue:", error);
+      addToast("Failed to remove customer from queue", "error");
+    }
+  };
+
   const addToast = (message, type = "info") => {
     const id = Math.random().toString();
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -605,6 +635,14 @@ const App = () => {
           }`}
         >
           Admin Panel
+        </button>
+        <button
+          onClick={() => setView("customerQueue")}
+          className={`w-full text-left px-4 py-2 rounded-md ${
+            view === "customerQueue" ? "bg-blue-600 text-white" : "text-gray-300 hover:bg-gray-700"
+          }`}
+        >
+          Customer Queue
         </button>
       </nav>
     </div>
@@ -748,6 +786,15 @@ const App = () => {
         }));
         setActiveBookings(allBookings.filter((b) => b.status === "active"));
         setCompletedBookings(allBookings.filter((b) => b.status === "completed"));
+
+        // Fetch customer queue
+        try {
+          const customerQueueData = await getCustomerQueue();
+          setCustomerQueue(customerQueueData);
+        } catch (error) {
+          console.error("Error fetching customer queue:", error);
+          addToast("Failed to load customer queue", "error");
+        }
 
         // Fetch settings
         const settingsSnapshot = await getDocs(collection(db, "settings"));
@@ -1075,6 +1122,15 @@ const App = () => {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+            {view === "customerQueue" && (
+              <div className="max-w-4xl mx-auto">
+                <CustomerQueue
+                  customers={customerQueue}
+                  onAddCustomer={handleAddCustomerToQueue}
+                  onDeleteCustomer={handleDeleteCustomerFromQueue}
+                />
               </div>
             )}
           </div>

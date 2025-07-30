@@ -118,3 +118,48 @@ export async function deleteSalespersonFromFirestore(salespersonId) {
     throw error;
   }
 }
+
+// Customer Queue Firebase Utilities
+export async function saveCustomerToQueue(customer) {
+  try {
+    const docRef = await addDoc(collection(db, "customerQueue"), {
+      ...customer,
+      timestamp: new Date(),
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error("Error adding customer to queue:", error);
+    throw error;
+  }
+}
+
+export async function deleteCustomerFromQueue(customerId) {
+  try {
+    await deleteDoc(doc(db, "customerQueue", customerId));
+  } catch (error) {
+    console.error("Error deleting customer from queue:", error);
+    throw error;
+  }
+}
+
+export async function updateCustomerInQueue(customerId, customerData) {
+  try {
+    await updateDoc(doc(db, "customerQueue", customerId), customerData);
+  } catch (error) {
+    console.error("Error updating customer in queue:", error);
+    throw error;
+  }
+}
+
+export async function getCustomerQueue() {
+  try {
+    const querySnapshot = await getDocs(collection(db, "customerQueue"));
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error("Error getting customer queue:", error);
+    throw error;
+  }
+}
