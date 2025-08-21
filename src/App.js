@@ -551,7 +551,7 @@ const App = () => {
   };
 
   const handleClearHistory = async () => {
-    if (window.confirm("Are you sure you want to clear all booking history? This cannot be undone.")) {
+    if (!window.confirm("Are you sure you want to clear all booking history? This cannot be undone.")) {
       return;
     }
     try {
